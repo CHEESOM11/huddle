@@ -137,8 +137,50 @@ export async function resetPassword(req: Request, res: Response) {
         message: "Password must be at least 8 characters",
       });
     }
+    
+    const authHeader = req.headers.authorization;
 
-    const { data, error } = await supabase.auth.updateUser({
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Authorization token is required.",
+      });
+    }
+
+    const accessToken = authHeader.substring(7);
+
+    // Verify the access token with Supabase
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      return res.status(401).json({
+        message: "Invalid or expired authorization token.",
+      });
+    }
+
+    // Create a Supabase client authenticated as this user
+    const { createClient } = await import("@supabase/supabase-js");
+
+    const userSupabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_PUBLISHABLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      }
+    );
+
+    const { data, error } = await userSupabase.auth.updateUser({
       password,
     });
 
