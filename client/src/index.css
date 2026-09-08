@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-huddle-purple: #5B5FC7;
+  --color-huddle-purple-hover: #4A4EB0;
+  --color-huddle-light: #F5F5F5;
+  --color-huddle-dark: #1a1a2e;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
