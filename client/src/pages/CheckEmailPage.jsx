@@ -25,7 +25,7 @@ function CheckEmailPage() {
 
         <h1 className="text-2xl font-semibold text-huddle-dark mb-3">Check your email</h1>
         <p className="text-gray-500 mb-8">
-          We've sent a password reset link to your email address. Please check your inbox and follow the instructions.
+          We've sent a link to your email address. Please check your inbox and follow the instructions to continue.
         </p>
 
         {/* Back to Sign In Button */}

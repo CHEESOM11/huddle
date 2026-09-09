@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { forgotPassword } from '../api/auth';
+import Spinner from '../components/Spinner';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,11 +45,11 @@ function ForgotPasswordPage() {
   };
 
   const inputClass =
-    'w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-huddle-purple';
+    'w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:border-huddle-purple focus:ring-2 focus:ring-huddle-purple/20';
 
   return (
     <div className="min-h-screen bg-huddle-light flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
+      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center form-rise">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-10 h-10 bg-huddle-purple rounded-lg flex items-center justify-center">
@@ -85,21 +86,28 @@ function ForgotPasswordPage() {
               className={`${inputClass} ${errors.email ? 'border-red-500' : 'border-gray-200'}`}
             />
             {errors.email && (
-              <p className="text-sm text-red-500 mt-1">{errors.email}</p>
+              <p className="form-message-in text-sm text-red-500 mt-1">{errors.email}</p>
             )}
           </div>
 
           {submitError && (
-            <p className="text-sm text-red-500">{submitError}</p>
+            <p className="form-message-in text-sm text-red-500">{submitError}</p>
           )}
 
           {/* Send Reset Link Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
+            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition duration-200 active:scale-[0.99] flex items-center justify-center gap-2"
           >
-            {loading ? 'Sending...' : 'Send Reset Link'}
+            {loading ? (
+              <>
+                <Spinner />
+                Sending...
+              </>
+            ) : (
+              'Send Reset Link'
+            )}
           </button>
         </form>
 

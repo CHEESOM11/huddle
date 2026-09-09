@@ -1,7 +1,13 @@
 import { useNavigate } from 'react-router-dom';
+import { clearToken } from '../utils/storage';
 
 function WorkspacePage() {
   const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearToken();
+    navigate('/');
+  };
 
   return (
     <div className="min-h-screen bg-huddle-light">
@@ -17,7 +23,7 @@ function WorkspacePage() {
             <span className="text-lg font-semibold text-huddle-dark">Huddle</span>
           </div>
           <button
-            onClick={() => navigate('/')}
+            onClick={handleLogout}
             className="text-gray-500 hover:text-huddle-purple transition-colors"
           >
             Logout
