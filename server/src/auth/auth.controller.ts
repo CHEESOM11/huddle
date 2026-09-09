@@ -12,7 +12,7 @@ import { AuthService } from './auth.service';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('signup')
+  @Post('register')
   async signUp(
     @Body('name') name: string,
     @Body('email') email: string,
