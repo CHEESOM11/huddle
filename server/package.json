@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
  "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js"
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js"
 },
   "keywords": [],
   "author": "",
