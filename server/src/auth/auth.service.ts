@@ -144,6 +144,23 @@ export class AuthService {
     };
   }
 
+  async getCurrentUser(accessToken: string) {
+    if (!accessToken) {
+      throw new UnauthorizedException('Authorization token is required.');
+    }
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(accessToken);
+
+    if (error || !user) {
+      throw new UnauthorizedException('Invalid or expired session.');
+    }
+
+    return { user };
+  }
+
   async googleLogin() {
     const redirectTo = process.env.GOOGLE_AUTH_REDIRECT_URL;
 

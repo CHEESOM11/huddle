@@ -44,6 +44,13 @@ export class AuthController {
     return this.authService.resetPassword(password, accessToken);
   }
 
+  @Get('me')
+  async currentUser(@Headers('authorization') authorization: string) {
+    const accessToken = authorization?.replace('Bearer ', '');
+
+    return this.authService.getCurrentUser(accessToken);
+  }
+
   @Get('google')
   async googleLogin() {
     return this.authService.googleLogin();
