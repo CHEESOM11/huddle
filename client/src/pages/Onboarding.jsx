@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import HuddleLogo from '../components/HuddleLogo'
 import onboardingOrganize from '../assets/onboarding-organize.png'
 import onboardingSync from '../assets/onboarding-sync.png'
@@ -25,14 +26,15 @@ const slides = [
   },
 ]
 
-function Onboarding({ onComplete }) {
+function Onboarding() {
+  const navigate = useNavigate()
   const [currentSlide, setCurrentSlide] = useState(0)
   const slide = slides[currentSlide]
   const isLastSlide = currentSlide === slides.length - 1
 
   const handleNext = () => {
-    if (isLastSlide && onComplete) {
-      onComplete()
+    if (isLastSlide) {
+      navigate('/create-account')
       return
     }
 
@@ -97,6 +99,7 @@ function Onboarding({ onComplete }) {
           <button
             type="button"
             className="mt-5 text-sm font-medium text-gray-400 transition hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:ring-offset-2"
+            onClick={() => navigate('/create-account')}
           >
             Skip for now
           </button>
