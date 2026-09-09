@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 function CheckEmailPage() {
   return (
     <div className="min-h-screen bg-huddle-light flex items-center justify-center p-6">
@@ -27,9 +29,12 @@ function CheckEmailPage() {
         </p>
 
         {/* Back to Sign In Button */}
-        <button className="w-full bg-huddle-purple hover:bg-huddle-purple-hover text-white font-medium py-3 px-6 rounded-lg transition-colors">
+        <Link
+          to="/sign-in"
+          className="block w-full bg-huddle-purple hover:bg-huddle-purple-hover text-white font-medium py-3 px-6 rounded-lg transition-colors"
+        >
           Back to Sign In
-        </button>
+        </Link>
 
         {/* Resend Link */}
         <p className="text-gray-500 text-sm mt-6">

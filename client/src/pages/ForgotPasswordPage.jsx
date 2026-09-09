@@ -1,8 +1,50 @@
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { forgotPassword } from '../api/auth';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function ForgotPasswordPage() {
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log('Reset link sent');
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const validate = () => {
+    const nextErrors = {};
+
+    if (!email.trim()) {
+      nextErrors.email = 'Email address is required';
+    } else if (!EMAIL_REGEX.test(email.trim())) {
+      nextErrors.email = 'Enter a valid email address';
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrors({});
+    setSubmitError('');
+
+    if (!validate()) return;
+
+    setLoading(true);
+    try {
+      await forgotPassword({ email: email.trim() });
+      navigate('/check-email');
+    } catch (err) {
+      // TODO(backend): standardize error shape { message | detail | error }
+      setSubmitError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputClass =
+    'w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-huddle-purple';
 
   return (
     <div className="min-h-screen bg-huddle-light flex items-center justify-center p-6">
@@ -22,30 +64,51 @@ function ForgotPasswordPage() {
           Enter your email address and we'll send you a link to reset your password.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-left">
+        <form onSubmit={handleSubmit} className="space-y-4 text-left" noValidate>
           {/* Email Field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              Email Address <span className="text-red-500">*</span>
+            </label>
             <input
+              id="email"
               type="email"
               placeholder="name@company.com"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-huddle-purple"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) {
+                  setErrors((prev) => ({ ...prev, email: undefined }));
+                }
+              }}
+              required
+              className={`${inputClass} ${errors.email ? 'border-red-500' : 'border-gray-200'}`}
             />
+            {errors.email && (
+              <p className="text-sm text-red-500 mt-1">{errors.email}</p>
+            )}
           </div>
+
+          {submitError && (
+            <p className="text-sm text-red-500">{submitError}</p>
+          )}
 
           {/* Send Reset Link Button */}
           <button
             type="submit"
-            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover text-white font-medium py-3 px-6 rounded-lg transition-colors"
+            disabled={loading}
+            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
           >
-            Send Reset Link
+            {loading ? 'Sending...' : 'Send Reset Link'}
           </button>
         </form>
 
         {/* Back to Sign In */}
         <p className="text-gray-500 text-sm mt-6">
           Remembered your password?{' '}
-          <span className="text-huddle-purple font-medium">Back to Sign In</span>
+          <Link to="/sign-in" className="text-huddle-purple font-medium hover:underline">
+            Back to Sign In
+          </Link>
         </p>
       </div>
     </div>

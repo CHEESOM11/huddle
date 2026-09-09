@@ -1,12 +1,66 @@
 import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { registerUser } from '../api/auth';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function CreateAccountPage() {
+  const navigate = useNavigate();
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log('Form submitted');
+  const validate = () => {
+    const nextErrors = {};
+
+    if (!fullName.trim()) {
+      nextErrors.fullName = 'Full name is required';
+    }
+
+    if (!email.trim()) {
+      nextErrors.email = 'Email address is required';
+    } else if (!EMAIL_REGEX.test(email.trim())) {
+      nextErrors.email = 'Enter a valid email address';
+    }
+
+    if (!password) {
+      nextErrors.password = 'Password is required';
+    } else if (password.length < 8) {
+      nextErrors.password = 'Password must be at least 8 characters';
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrors({});
+    setSubmitError('');
+
+    if (!validate()) return;
+
+    setLoading(true);
+    try {
+      await registerUser({ fullName: fullName.trim(), email: email.trim(), password });
+      // TODO(backend): define register response + email-verification flow if any
+      navigate('/sign-in');
+    } catch (err) {
+      // TODO(backend): standardize error shape { message | detail | error }
+      setSubmitError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputClass = (hasError) =>
+    `w-full px-4 py-3 border rounded-lg focus:outline-none focus:border-huddle-purple ${
+      hasError ? 'border-red-500' : 'border-gray-200'
+    }`;
 
   return (
     <div className="min-h-screen bg-huddle-light flex flex-col items-center justify-center p-6">
@@ -25,35 +79,74 @@ function CreateAccountPage() {
         <h1 className="text-2xl font-semibold text-huddle-dark text-center mb-2">Create Account</h1>
         <p className="text-gray-500 text-center mb-6">Start collaborating with your team</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {/* Full Name Field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name <span className="text-red-500">*</span>
+            </label>
             <input
+              id="fullName"
               type="text"
               placeholder="John Doe"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-huddle-purple"
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                if (errors.fullName) {
+                  setErrors((prev) => ({ ...prev, fullName: undefined }));
+                }
+              }}
+              required
+              className={inputClass(errors.fullName)}
             />
+            {errors.fullName && (
+              <p className="text-sm text-red-500 mt-1">{errors.fullName}</p>
+            )}
           </div>
 
           {/* Email Field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              Email Address <span className="text-red-500">*</span>
+            </label>
             <input
+              id="email"
               type="email"
               placeholder="name@company.com"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-huddle-purple"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) {
+                  setErrors((prev) => ({ ...prev, email: undefined }));
+                }
+              }}
+              required
+              className={inputClass(errors.email)}
             />
+            {errors.email && (
+              <p className="text-sm text-red-500 mt-1">{errors.email}</p>
+            )}
           </div>
 
           {/* Password Field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              Password <span className="text-red-500">*</span>
+            </label>
             <div className="relative">
               <input
+                id="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-huddle-purple pr-10"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors.password) {
+                    setErrors((prev) => ({ ...prev, password: undefined }));
+                  }
+                }}
+                required
+                className={`${inputClass(errors.password)} pr-10`}
               />
               <button
                 type="button"
@@ -72,14 +165,22 @@ function CreateAccountPage() {
                 )}
               </button>
             </div>
+            {errors.password && (
+              <p className="text-sm text-red-500 mt-1">{errors.password}</p>
+            )}
           </div>
+
+          {submitError && (
+            <p className="text-sm text-red-500">{submitError}</p>
+          )}
 
           {/* Create Account Button */}
           <button
             type="submit"
-            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover text-white font-medium py-3 px-6 rounded-lg transition-colors"
+            disabled={loading}
+            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors"
           >
-            Create Account
+            {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 
@@ -104,7 +205,9 @@ function CreateAccountPage() {
         {/* Sign In Link */}
         <p className="text-center text-gray-500 text-sm mt-6">
           Already have an account?{' '}
-          <span className="text-huddle-purple font-medium">Sign In</span>
+          <Link to="/sign-in" className="text-huddle-purple font-medium hover:underline">
+            Sign In
+          </Link>
         </p>
       </div>
     </div>
