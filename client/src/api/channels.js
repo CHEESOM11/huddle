@@ -30,3 +30,8 @@ export async function createChannel(name) {
 
   return normalizeChannel(data.channel)
 }
+
+export async function deleteChannel(channelId) {
+  const token = getToken()
+  await request(`/api/channels/${channelId}`, { method: 'DELETE', token })
+}

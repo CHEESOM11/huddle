@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import channelImage from "../assets/channel.png";
 import { clearToken } from "../utils/storage";
-import { fetchChannels, createChannel } from "../api/channels";
+import { fetchChannels, createChannel, deleteChannel } from "../api/channels";
 import Spinner from "../components/Spinner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -25,6 +25,7 @@ import {
   faUser,
   faRightFromBracket,
   faHashtag,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
 function IconButton({ label, children, className = "", onClick }) {
@@ -218,7 +219,7 @@ function Sidebar({
   );
 }
 
-function TopBar({ onLogout, channelName }) {
+function TopBar({ onLogout, channelName, onOpenSettings }) {
   return (
     <header className="flex h-[76px] shrink-0 items-center gap-5 border-b border-gray-200 bg-white px-8">
       <label className="relative flex-1">
@@ -238,7 +239,7 @@ function TopBar({ onLogout, channelName }) {
         <IconButton label="Notifications">
           <FontAwesomeIcon icon={faBell} />
         </IconButton>
-        <IconButton label="Settings">
+        <IconButton label="Settings" onClick={onOpenSettings}>
           <FontAwesomeIcon icon={faGear} />
         </IconButton>
         <IconButton label="Log out" onClick={onLogout}>
@@ -397,6 +398,120 @@ function Composer({ channelName }) {
   );
 }
 
+function SettingsChannelRow({ channel, onDelete }) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    setError("");
+    try {
+      await onDelete(channel.id);
+      // On success the parent removes this channel, unmounting the row.
+    } catch (err) {
+      setError(err.message);
+      setDeleting(false);
+    }
+  };
+
+  if (confirming) {
+    return (
+      <li className="rounded-md bg-gray-50 p-2.5">
+        <p className="text-sm text-gray-900">
+          Delete <span className="font-semibold">#{channel.name}</span>?
+        </p>
+        {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={deleting}
+            className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            disabled={deleting}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5">
+      <span className="flex min-w-0 items-center gap-2 text-sm text-gray-700">
+        <FontAwesomeIcon
+          icon={faHashtag}
+          className="h-3.5 w-3.5 shrink-0 text-gray-400"
+        />
+        <span className="truncate">{channel.name}</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
+      >
+        Delete
+      </button>
+    </li>
+  );
+}
+
+function SettingsPanel({ channels, onClose, onDeleteChannel }) {
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/30"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <aside
+        className="fixed inset-y-0 right-0 z-50 flex w-[320px] flex-col border-l border-gray-200 bg-white shadow-xl"
+        role="dialog"
+        aria-label="Settings"
+      >
+        <header className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900">Settings</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Channels
+          </h3>
+          {channels.length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">No channels to manage.</p>
+          ) : (
+            <ul className="mt-2 space-y-0.5">
+              {channels.map((channel) => (
+                <SettingsChannelRow
+                  key={channel.id}
+                  channel={channel}
+                  onDelete={onDeleteChannel}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
 export default function EmptyWorkspace() {
   const navigate = useNavigate();
   const [channels, setChannels] = useState([]);
@@ -405,6 +520,7 @@ export default function EmptyWorkspace() {
   const [errorMessage, setErrorMessage] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -452,6 +568,15 @@ export default function EmptyWorkspace() {
     setIsCreatingChannel(false);
   };
 
+  const handleDeleteChannel = async (channelId) => {
+    await deleteChannel(channelId);
+    const nextChannels = channels.filter((channel) => channel.id !== channelId);
+    setChannels(nextChannels);
+    if (selectedChannelId === channelId) {
+      setSelectedChannelId(nextChannels[0]?.id ?? null);
+    }
+  };
+
   let content;
   if (status === "loading") {
     content = <LoadingState />;
@@ -475,10 +600,22 @@ export default function EmptyWorkspace() {
         onCreateChannel={handleCreateChannel}
       />
       <section className="flex h-full min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-white">
-        <TopBar onLogout={handleLogout} channelName={selectedChannel?.name} />
+        <TopBar
+          onLogout={handleLogout}
+          channelName={selectedChannel?.name}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
         {content}
         <Composer channelName={selectedChannel?.name} />
       </section>
+
+      {isSettingsOpen && (
+        <SettingsPanel
+          channels={channels}
+          onClose={() => setIsSettingsOpen(false)}
+          onDeleteChannel={handleDeleteChannel}
+        />
+      )}
     </main>
   );
 }
