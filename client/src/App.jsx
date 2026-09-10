@@ -8,6 +8,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import Onboarding from './pages/Onboarding';
 import ProfileSetupPage from './pages/ProfileSetupPage';
 import WorkspacePage from './pages/WorkspacePage';
+import EmptyWorkspace from './pages/EmptyWorkSpace';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile-setup" element={<ProfileSetupPage />} />
         <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/empty-workspace" element={<EmptyWorkspace />} />
       </Routes>
     </Router>
   );

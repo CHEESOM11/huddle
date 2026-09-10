@@ -1,4 +1,4 @@
-import { useState } from 'react'
+ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HuddleLogo from '../components/HuddleLogo'
 import onboardingOrganize from '../assets/onboarding-organize.png'
