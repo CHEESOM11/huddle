@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faUser } from '@fortawesome/free-solid-svg-icons';
 
 function ProfileSetupPage() {
   const navigate = useNavigate();
@@ -31,9 +33,7 @@ function ProfileSetupPage() {
         <div className="bg-white rounded-2xl shadow-sm p-8 max-w-md mx-auto">
           <div className="text-center mb-6">
             <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
+              <FontAwesomeIcon icon={faUser} className="w-10 h-10 text-gray-400" />
             </div>
             <h2 className="text-xl font-medium text-huddle-dark">Complete your profile</h2>
             <p className="text-gray-500 text-sm">Add a photo and tell us about yourself</p>

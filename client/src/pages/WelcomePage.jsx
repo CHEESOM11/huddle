@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCheck, faPaperPlane } from '@fortawesome/free-solid-svg-icons';
 
 function WelcomePage() {
   const navigate = useNavigate();
@@ -20,9 +22,7 @@ function WelcomePage() {
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
           {/* Success Icon */}
           <div className="w-16 h-16 bg-huddle-purple rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+            <FontAwesomeIcon icon={faCheck} className="w-8 h-8 text-white" />
           </div>
 
           {/* Welcome Text */}
@@ -39,9 +39,7 @@ function WelcomePage() {
               onClick={() => navigate('/workspace')}
               className="w-full bg-huddle-purple hover:bg-huddle-purple-hover text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+              <FontAwesomeIcon icon={faPaperPlane} className="w-5 h-5" />
               Go to Workspace
             </button>
             <button
