@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import channelImage from "../assets/channel.png";
 import { clearToken } from "../utils/storage";
-import { fetchChannels, createChannel, deleteChannel } from "../api/channels";
+import { fetchChannels, createChannel, deleteChannel, inviteUser } from "../api/channels";
+import { fetchMessages } from "../api/messages";
+import { getSocket } from "../lib/socket";
 import Spinner from "../components/Spinner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -23,6 +25,7 @@ import {
   faMicrophone,
   faPaperPlane,
   faUser,
+  faUserPlus,
   faRightFromBracket,
   faHashtag,
   faXmark,
@@ -181,7 +184,14 @@ function Sidebar({
   isCreatingChannel,
   onToggleCreate,
   onCreateChannel,
+  searchQuery,
 }) {
+  const visibleChannels = searchQuery
+    ? channels.filter((channel) =>
+        channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : channels;
+
   return (
     <aside className="h-screen w-[220px] shrink-0 border-r border-gray-200 bg-gray-50 px-5 py-6">
       <button
@@ -200,9 +210,9 @@ function Sidebar({
               onCancel={onToggleCreate}
             />
           )}
-          {channels.length > 0 && (
+          {visibleChannels.length > 0 ? (
             <ul className="space-y-0.5">
-              {channels.map((channel) => (
+              {visibleChannels.map((channel) => (
                 <ChannelListItem
                   key={channel.id}
                   channel={channel}
@@ -211,7 +221,11 @@ function Sidebar({
                 />
               ))}
             </ul>
-          )}
+          ) : searchQuery ? (
+            <p className="text-sm text-gray-400">
+              No channels match "{searchQuery}".
+            </p>
+          ) : null}
         </SidebarSection>
         <SidebarSection title="Direct Messages" />
       </nav>
@@ -219,7 +233,15 @@ function Sidebar({
   );
 }
 
-function TopBar({ onLogout, channelName, onOpenSettings }) {
+function TopBar({
+  onLogout,
+  channelName,
+  onOpenSettings,
+  searchQuery,
+  onSearchChange,
+  notificationCount,
+  onToggleNotifications,
+}) {
   return (
     <header className="flex h-[76px] shrink-0 items-center gap-5 border-b border-gray-200 bg-white px-8">
       <label className="relative flex-1">
@@ -230,15 +252,27 @@ function TopBar({ onLogout, channelName, onOpenSettings }) {
         />
         <input
           type="search"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
           placeholder={channelName ? `Search ${channelName}...` : "Search..."}
           className="h-12 w-full rounded-full border border-gray-200 bg-gray-50 pl-13 pr-5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#4F46E5] focus:bg-white focus:ring-4 focus:ring-[#4F46E5]/10"
         />
       </label>
 
       <div className="flex items-center gap-2">
-        <IconButton label="Notifications">
+        <button
+          type="button"
+          aria-label="Notifications"
+          onClick={onToggleNotifications}
+          className="relative inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+        >
           <FontAwesomeIcon icon={faBell} />
-        </IconButton>
+          {notificationCount > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+              {notificationCount}
+            </span>
+          )}
+        </button>
         <IconButton label="Settings" onClick={onOpenSettings}>
           <FontAwesomeIcon icon={faGear} />
         </IconButton>
@@ -314,14 +348,146 @@ function ErrorState({ message, onRetry }) {
   );
 }
 
-function ChannelView({ channel }) {
+function MessageList({ messages, currentUserId }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
+
+  if (messages.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-gray-400">
+        No messages yet. Start the conversation.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="min-h-0 flex-1 space-y-2 overflow-y-auto px-8 py-4"
+    >
+      {messages.map((message) => {
+        const own = message.user_id === currentUserId;
+        return (
+          <div
+            key={message.id}
+            className={`flex ${own ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[70%] rounded-lg px-4 py-2 text-sm ${
+                own ? "bg-[#4F46E5] text-white" : "bg-gray-100 text-gray-900"
+              }`}
+            >
+              <p className="break-words">{message.content}</p>
+              <span
+                className={`mt-1 block text-[11px] ${
+                  own ? "text-white/70" : "text-gray-400"
+                }`}
+              >
+                {message.created_at
+                  ? new Date(message.created_at).toLocaleTimeString()
+                  : ""}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InviteForm({ channelId, onClose }) {
+  const [email, setEmail] = useState("");
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) return;
+
+    setPending(true);
+    setResult(null);
+    try {
+      await inviteUser(channelId, trimmed);
+      setResult({ ok: true, message: `Invited ${trimmed}` });
+      setEmail("");
+    } catch (err) {
+      setResult({ ok: false, message: err.message });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <input
+        autoFocus
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={pending}
+        placeholder="Email address"
+        className="w-52 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/20"
+      />
+      <button
+        type="submit"
+        disabled={pending || !email.trim()}
+        className="rounded-md bg-[#4F46E5] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#4338CA] disabled:opacity-60"
+      >
+        {pending ? "Inviting…" : "Invite"}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={pending}
+        className="rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+      >
+        Cancel
+      </button>
+      {result && (
+        <span
+          className={`text-xs ${result.ok ? "text-green-600" : "text-red-500"}`}
+        >
+          {result.message}
+        </span>
+      )}
+    </form>
+  );
+}
+
+function ChannelView({ channel, messages, currentUserId }) {
+  const [isInviting, setIsInviting] = useState(false);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-gray-200 px-8">
         <FontAwesomeIcon icon={faHashtag} className="h-5 w-5 text-gray-400" />
         <h1 className="text-lg font-bold text-gray-900">{channel.name}</h1>
+        <div className="ml-auto">
+          {isInviting ? (
+            <InviteForm
+              channelId={channel.id}
+              onClose={() => setIsInviting(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsInviting(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            >
+              <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
+              Invite
+            </button>
+          )}
+        </div>
       </header>
-      <div className="min-h-0 flex-1" />
+      <MessageList messages={messages} currentUserId={currentUserId} />
     </section>
   );
 }
@@ -338,7 +504,7 @@ function ComposerIconButton({ label, icon }) {
   );
 }
 
-function Composer({ channelName }) {
+function Composer({ channelName, value, onChange, onSend, disabled }) {
   const formattingTools = [
     ["Bold", faBold],
     ["Italic", faItalic],
@@ -355,6 +521,13 @@ function Composer({ channelName }) {
     ["Record audio", faMicrophone],
   ];
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  };
+
   return (
     <section className="shrink-0 px-8 pb-7" aria-label="Message composer">
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -370,6 +543,9 @@ function Composer({ channelName }) {
           </span>
           <textarea
             rows={2}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder={channelName ? `Message #${channelName}` : "Message"}
             className="block w-full resize-none px-5 py-4 text-sm text-gray-900 outline-none placeholder:text-gray-400"
           />
@@ -384,7 +560,9 @@ function Composer({ channelName }) {
 
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#4F46E5] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4338CA] focus:outline-none focus:ring-4 focus:ring-[#4F46E5]/20"
+            onClick={onSend}
+            disabled={disabled || !value.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#4F46E5] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4338CA] focus:outline-none focus:ring-4 focus:ring-[#4F46E5]/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Send
             <FontAwesomeIcon icon={faPaperPlane} className="h-4 w-4" />
@@ -464,6 +642,64 @@ function SettingsChannelRow({ channel, onDelete }) {
   );
 }
 
+function NotificationsPanel({ notifications, onClose, onClear }) {
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        className="fixed right-6 top-[72px] z-50 w-80 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+        role="dialog"
+        aria-label="Notifications"
+      >
+        <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close notifications"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+          >
+            <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="max-h-72 overflow-y-auto px-2 py-2">
+          {notifications.length === 0 ? (
+            <p className="px-2 py-4 text-sm text-gray-500">No notifications.</p>
+          ) : (
+            <ul className="space-y-1">
+              {notifications.map((notification) => (
+                <li
+                  key={notification.id}
+                  className="rounded-md px-3 py-2 text-sm text-gray-700"
+                >
+                  {notification.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {notifications.length > 0 && (
+          <footer className="border-t border-gray-200 px-4 py-2">
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-xs font-medium text-[#4F46E5] transition hover:underline"
+            >
+              Clear all
+            </button>
+          </footer>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SettingsPanel({ channels, onClose, onDeleteChannel }) {
   return (
     <>
@@ -521,6 +757,86 @@ export default function EmptyWorkspace() {
   const [attempt, setAttempt] = useState(0);
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [sendError, setSendError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const currentChannelRef = useRef(null);
+
+  const handleSelectChannel = useCallback((channelId) => {
+    if (!channelId || channelId === currentChannelRef.current) return;
+
+    const socket = getSocket();
+    const previous = currentChannelRef.current;
+    if (previous) {
+      socket.emit("leave_channel", { channelId: previous });
+    }
+
+    currentChannelRef.current = channelId;
+    setSelectedChannelId(channelId);
+    setMessages([]);
+
+    fetchMessages(channelId)
+      .then((list) => setMessages(list))
+      .catch(() => setMessages([]));
+
+    socket.emit("join_channel", { channelId }, (ack) => {
+      if (ack?.event === "error") {
+        setSendError(ack.message || "Couldn't join channel.");
+      }
+    });
+  }, []);
+
+  const handleSendMessage = () => {
+    const content = messageDraft.trim();
+    const channelId = currentChannelRef.current;
+    if (!content || !channelId) return;
+
+    setSendError("");
+    setMessageDraft("");
+
+    getSocket().emit("send_message", { channelId, content }, (ack) => {
+      if (ack?.event === "message_error") {
+        setMessageDraft(content);
+        setSendError(ack.message || "Failed to send message.");
+      }
+    });
+  };
+
+  useEffect(() => {
+    const socket = getSocket();
+
+    const handleAuthenticated = ({ userId }) => setCurrentUserId(userId);
+    const handleNewMessage = (message) => {
+      if (message?.channel_id !== currentChannelRef.current) return;
+      setMessages((prev) =>
+        prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+      );
+    };
+    const handleAddedToChannel = (payload) => {
+      const name = payload?.channel?.name ?? "a channel";
+      setNotifications((prev) => [
+        { id: `${Date.now()}-${name}`, text: `You were added to #${name}` },
+        ...prev,
+      ]);
+      fetchChannels()
+        .then((data) => setChannels(data))
+        .catch(() => {});
+    };
+
+    socket.on("authenticated", handleAuthenticated);
+    socket.on("new_message", handleNewMessage);
+    socket.on("added_to_channel", handleAddedToChannel);
+
+    return () => {
+      socket.off("authenticated", handleAuthenticated);
+      socket.off("new_message", handleNewMessage);
+      socket.off("added_to_channel", handleAddedToChannel);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -529,8 +845,8 @@ export default function EmptyWorkspace() {
       .then((data) => {
         if (cancelled) return;
         setChannels(data);
-        setSelectedChannelId(data[0]?.id ?? null);
         setStatus("ready");
+        handleSelectChannel(data[0]?.id ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -541,7 +857,7 @@ export default function EmptyWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [attempt, handleSelectChannel]);
 
   const handleRetry = () => {
     setStatus("loading");
@@ -564,8 +880,8 @@ export default function EmptyWorkspace() {
   const handleCreateChannel = async (name) => {
     const channel = await createChannel(name);
     setChannels((prev) => [...prev, channel]);
-    setSelectedChannelId(channel.id);
     setIsCreatingChannel(false);
+    handleSelectChannel(channel.id);
   };
 
   const handleDeleteChannel = async (channelId) => {
@@ -573,7 +889,7 @@ export default function EmptyWorkspace() {
     const nextChannels = channels.filter((channel) => channel.id !== channelId);
     setChannels(nextChannels);
     if (selectedChannelId === channelId) {
-      setSelectedChannelId(nextChannels[0]?.id ?? null);
+      handleSelectChannel(nextChannels[0]?.id ?? null);
     }
   };
 
@@ -585,7 +901,13 @@ export default function EmptyWorkspace() {
   } else if (!selectedChannel) {
     content = <EmptyState onCreateChannel={() => setIsCreatingChannel(true)} />;
   } else {
-    content = <ChannelView channel={selectedChannel} />;
+    content = (
+      <ChannelView
+        channel={selectedChannel}
+        messages={messages}
+        currentUserId={currentUserId}
+      />
+    );
   }
 
   return (
@@ -594,19 +916,39 @@ export default function EmptyWorkspace() {
       <Sidebar
         channels={channels}
         selectedChannelId={selectedChannelId}
-        onSelectChannel={setSelectedChannelId}
+        onSelectChannel={handleSelectChannel}
         isCreatingChannel={isCreatingChannel}
         onToggleCreate={handleToggleCreate}
         onCreateChannel={handleCreateChannel}
+        searchQuery={searchQuery}
       />
       <section className="flex h-full min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-white">
         <TopBar
           onLogout={handleLogout}
           channelName={selectedChannel?.name}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          notificationCount={notifications.length}
+          onToggleNotifications={() => setIsNotificationsOpen((value) => !value)}
         />
         {content}
-        <Composer channelName={selectedChannel?.name} />
+        {selectedChannel && (
+          <>
+            {sendError && (
+              <p className="px-8 pb-1 text-xs text-red-500">{sendError}</p>
+            )}
+            <Composer
+              channelName={selectedChannel.name}
+              value={messageDraft}
+              onChange={(value) => {
+                setMessageDraft(value);
+                if (sendError) setSendError("");
+              }}
+              onSend={handleSendMessage}
+            />
+          </>
+        )}
       </section>
 
       {isSettingsOpen && (
@@ -614,6 +956,14 @@ export default function EmptyWorkspace() {
           channels={channels}
           onClose={() => setIsSettingsOpen(false)}
           onDeleteChannel={handleDeleteChannel}
+        />
+      )}
+
+      {isNotificationsOpen && (
+        <NotificationsPanel
+          notifications={notifications}
+          onClose={() => setIsNotificationsOpen(false)}
+          onClear={() => setNotifications([])}
         />
       )}
     </main>
