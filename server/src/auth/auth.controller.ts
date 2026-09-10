@@ -29,6 +29,13 @@ export class AuthController {
     return this.authService.login(email, password);
   }
 
+  @Get('me')
+  async getCurrentUser(@Headers('authorization') authorization: string) {
+    const accessToken = authorization?.replace('Bearer ', '');
+
+    return this.authService.getCurrentUser(accessToken);
+  }
+
   @Post('forgot-password')
   async forgotPassword(@Body('email') email: string) {
     return this.authService.forgotPassword(email);

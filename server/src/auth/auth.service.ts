@@ -68,6 +68,23 @@ export class AuthService {
     };
   }
 
+  async getCurrentUser(accessToken: string) {
+    if (!accessToken) {
+      throw new UnauthorizedException('Authorization token is required.');
+    }
+
+    const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+
+    if (error || !user) {
+      throw new UnauthorizedException('Invalid or expired authorization token.');
+    }
+
+    return {
+      message: 'User retrieved successfully.',
+      user,
+    };
+  }
+  
   async forgotPassword(email: string) {
     if (!email) {
       throw new BadRequestException('Email is required.');
