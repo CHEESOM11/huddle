@@ -113,10 +113,14 @@ export class MessagesService {
     channelId: string,
     content: string,
     accessToken: string,
+    filePath?: string,
+    fileName?: string,
+    fileType?: string,
+    fileSize?: number,
   ) {
-    if (!channelId || !content?.trim()) {
+    if (!content?.trim() && !filePath) {
       throw new BadRequestException(
-        'Channel ID and message content are required.',
+        'Message content or file is required.',
       );
     }
 
@@ -143,10 +147,14 @@ export class MessagesService {
       .insert({
         channel_id: channelId,
         user_id: user.id,
-        content: content.trim(),
+        content: content?.trim() || null,
+        file_path: filePath || null,
+        file_name: fileName || null,
+        file_type: fileType || null,
+        file_size: fileSize || null,
       })
       .select(
-        'id, channel_id, user_id, content, created_at',
+        'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
       )
       .single();
 
@@ -189,7 +197,7 @@ export class MessagesService {
       await authenticatedSupabase
         .from('messages')
         .select(
-          'id, channel_id, user_id, content, created_at',
+          'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
         )
         .eq('channel_id', channelId)
         .order('created_at', {

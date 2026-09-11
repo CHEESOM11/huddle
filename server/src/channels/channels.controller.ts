@@ -6,13 +6,20 @@ import {
   Param,
   Post,
   Get,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
 
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ChannelsService } from "./channels.service";
+import { StorageService } from "../storage/storage.service";
 
 @Controller("channels")
 export class ChannelsController {
-  constructor(private readonly channelsService: ChannelsService) {}
+  constructor(
+    private readonly channelsService: ChannelsService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   async createChannel(
@@ -46,11 +53,10 @@ export class ChannelsController {
     @Param("channelId") channelId: string,
     @Headers("authorization") authorization: string,
   ) {
-    const accessToken = authorization?.replace(/^Bearer\s+/i, '');
+    const accessToken = authorization?.replace(/^Bearer\s+/i, "");
 
     return this.channelsService.inviteUser(channelId, accessToken);
   }
-
 
   @Delete(":channelId")
   async deleteChannel(
@@ -60,5 +66,16 @@ export class ChannelsController {
     const accessToken = authorization?.replace(/^Bearer\s+/i, "");
 
     return this.channelsService.deleteChannel(channelId, accessToken);
+  }
+
+  @Post(":channelId/upload")
+  @UseInterceptors(FileInterceptor("file"))
+  async uploadFile(
+    @Param("channelId") channelId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken = authorization?.replace(/^Bearer\s+/i, "");
+    return this.storageService.uploadFile(file, channelId, accessToken);
   }
 }
