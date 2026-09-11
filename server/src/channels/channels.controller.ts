@@ -26,16 +26,39 @@ export class ChannelsController {
     @Body("name") name: string,
     @Headers("authorization") authorization: string,
   ) {
-    const accessToken = authorization?.replace("Bearer ", "");
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
 
-    return this.channelsService.createChannel(name, accessToken);
+    return this.channelsService.createChannel(
+      name,
+      accessToken,
+    );
   }
 
   @Get()
-  async getChannels(@Headers("authorization") authorization: string) {
-    const accessToken = authorization?.replace("Bearer ", "");
+  async getChannels(
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
 
-    return this.channelsService.getChannels(accessToken);
+    return this.channelsService.getChannels(
+      accessToken,
+    );
+  }
+
+  @Get(":channelId/members")
+  async getChannelMembers(
+    @Param("channelId") channelId: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
+
+    return this.channelsService.getChannelMembers(
+      channelId,
+      accessToken,
+    );
   }
 
   @Post(":channelId/join")
@@ -43,9 +66,13 @@ export class ChannelsController {
     @Param("channelId") channelId: string,
     @Headers("authorization") authorization: string,
   ) {
-    const accessToken = authorization?.replace("Bearer ", "");
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
 
-    return this.channelsService.joinChannel(channelId, accessToken);
+    return this.channelsService.joinChannel(
+      channelId,
+      accessToken,
+    );
   }
 
   @Post(":channelId/invite")
@@ -55,7 +82,10 @@ export class ChannelsController {
   ) {
     const accessToken = authorization?.replace(/^Bearer\s+/i, "");
 
-    return this.channelsService.inviteUser(channelId, accessToken);
+    return this.channelsService.inviteUser(
+      channelId,
+      accessToken,
+    );
   }
 
   @Delete(":channelId")
@@ -63,9 +93,13 @@ export class ChannelsController {
     @Param("channelId") channelId: string,
     @Headers("authorization") authorization: string,
   ) {
-    const accessToken = authorization?.replace(/^Bearer\s+/i, "");
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
 
-    return this.channelsService.deleteChannel(channelId, accessToken);
+    return this.channelsService.deleteChannel(
+      channelId,
+      accessToken,
+    );
   }
 
   @Post(":channelId/upload")

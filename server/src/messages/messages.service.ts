@@ -1,10 +1,15 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import {
+  createClient,
+  SupabaseClient,
+} from '@supabase/supabase-js';
 
 @Injectable()
 export class MessagesService {
@@ -62,11 +67,12 @@ export class MessagesService {
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
 
-    const { data, error } = await authenticatedSupabase
-      .from('channels')
-      .select('id')
-      .eq('id', channelId)
-      .maybeSingle();
+    const { data, error } =
+      await authenticatedSupabase
+        .from('channels')
+        .select('id')
+        .eq('id', channelId)
+        .maybeSingle();
 
     if (error) {
       throw new BadRequestException(error.message);
@@ -89,12 +95,13 @@ export class MessagesService {
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
 
-    const { data, error } = await authenticatedSupabase
-      .from('channel_members')
-      .select('id')
-      .eq('channel_id', channelId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data, error } =
+      await authenticatedSupabase
+        .from('channel_members')
+        .select('id')
+        .eq('channel_id', channelId)
+        .eq('user_id', userId)
+        .maybeSingle();
 
     if (error) {
       throw new BadRequestException(error.message);
@@ -124,9 +131,8 @@ export class MessagesService {
       );
     }
 
-    const user = await this.getAuthenticatedUser(
-      accessToken,
-    );
+    const user =
+      await this.getAuthenticatedUser(accessToken);
 
     await this.verifyChannelExists(
       channelId,
@@ -175,9 +181,8 @@ export class MessagesService {
       );
     }
 
-    const user = await this.getAuthenticatedUser(
-      accessToken,
-    );
+    const user =
+      await this.getAuthenticatedUser(accessToken);
 
     await this.verifyChannelExists(
       channelId,
@@ -208,20 +213,196 @@ export class MessagesService {
       throw new BadRequestException(error.message);
     }
 
-    const messageIds = (messages ?? []).map(
-      (message) => message.id,
-    );
+    const messageIds =
+      (messages ?? []).map(
+        (message) => message.id,
+      );
 
-    const reactionsMap = await this.getReactions(
-      messageIds,
+    const reactionsMap =
+      await this.getReactions(
+        messageIds,
+        accessToken,
+      );
+
+    return (messages ?? []).map(
+      (message) => ({
+        ...message,
+        reactions:
+          reactionsMap.get(message.id) ?? [],
+      }),
+    );
+  }
+
+  async editMessage(
+    channelId: string,
+    messageId: string,
+    content: string,
+    accessToken: string,
+  ) {
+    if (!channelId || !messageId) {
+      throw new BadRequestException(
+        'Channel ID and message ID are required.',
+      );
+    }
+
+    if (!content?.trim()) {
+      throw new BadRequestException(
+        'Message content cannot be empty.',
+      );
+    }
+
+    const user =
+      await this.getAuthenticatedUser(accessToken);
+
+    await this.verifyChannelExists(
+      channelId,
       accessToken,
     );
 
-    return (messages ?? []).map((message) => ({
-      ...message,
-      reactions:
-        reactionsMap.get(message.id) ?? [],
-    }));
+    await this.verifyChannelMembership(
+      channelId,
+      user.id,
+      accessToken,
+    );
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: existingMessage,
+      error: findError,
+    } = await authenticatedSupabase
+      .from('messages')
+      .select(
+        'id, channel_id, user_id, content, created_at',
+      )
+      .eq('id', messageId)
+      .eq('channel_id', channelId)
+      .maybeSingle();
+
+    if (findError) {
+      throw new BadRequestException(
+        findError.message,
+      );
+    }
+
+    if (!existingMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    if (existingMessage.user_id !== user.id) {
+      throw new ForbiddenException(
+        'You can only edit your own messages.',
+      );
+    }
+
+    const {
+      data: updatedMessage,
+      error: updateError,
+    } = await authenticatedSupabase
+      .from('messages')
+      .update({
+        content: content.trim(),
+      })
+      .eq('id', messageId)
+      .eq('channel_id', channelId)
+      .eq('user_id', user.id)
+      .select(
+        'id, channel_id, user_id, content, created_at',
+      )
+      .single();
+
+    if (updateError || !updatedMessage) {
+      throw new BadRequestException(
+        updateError?.message ??
+          'Failed to update message.',
+      );
+    }
+
+    return updatedMessage;
+  }
+
+  async deleteMessage(
+    channelId: string,
+    messageId: string,
+    accessToken: string,
+  ) {
+    if (!channelId || !messageId) {
+      throw new BadRequestException(
+        'Channel ID and message ID are required.',
+      );
+    }
+
+    const user =
+      await this.getAuthenticatedUser(accessToken);
+
+    await this.verifyChannelExists(
+      channelId,
+      accessToken,
+    );
+
+    await this.verifyChannelMembership(
+      channelId,
+      user.id,
+      accessToken,
+    );
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: existingMessage,
+      error: findError,
+    } = await authenticatedSupabase
+      .from('messages')
+      .select(
+        'id, channel_id, user_id',
+      )
+      .eq('id', messageId)
+      .eq('channel_id', channelId)
+      .maybeSingle();
+
+    if (findError) {
+      throw new BadRequestException(
+        findError.message,
+      );
+    }
+
+    if (!existingMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    if (existingMessage.user_id !== user.id) {
+      throw new ForbiddenException(
+        'You can only delete your own messages.',
+      );
+    }
+
+    const { error: deleteError } =
+      await authenticatedSupabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId)
+        .eq('channel_id', channelId)
+        .eq('user_id', user.id);
+
+    if (deleteError) {
+      throw new BadRequestException(
+        deleteError.message,
+      );
+    }
+
+    return {
+      message: 'Message deleted successfully.',
+      data: {
+        id: messageId,
+        channelId,
+      },
+    };
   }
 
   async getReactions(
@@ -253,7 +434,9 @@ export class MessagesService {
         .in('message_id', messageIds);
 
     if (error) {
-      throw new BadRequestException(error.message);
+      throw new BadRequestException(
+        error.message,
+      );
     }
 
     for (const row of data ?? []) {
@@ -299,7 +482,10 @@ export class MessagesService {
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
 
-    const { data: existing, error: findError } =
+    const {
+      data: existing,
+      error: findError,
+    } =
       await authenticatedSupabase
         .from('message_reactions')
         .select('id')
