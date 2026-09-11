@@ -8,8 +8,8 @@ import CheckEmailPage from './pages/CheckEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import Onboarding from './pages/Onboarding';
 import ProfileSetupPage from './pages/ProfileSetupPage';
-import WorkspacePage from './pages/WorkspacePage';
 import ConfirmEmailPage from './pages/ConfirmEmailPage';
+import EmptyWorkspace from './pages/EmptyWorkSpace';
 import { getCurrentSession } from './api/auth';
 import { getToken, clearToken, hasSeenOnboarding } from './utils/storage';
 import FullPageLoader from './components/FullPageLoader';
@@ -158,7 +158,7 @@ function App() {
           path="/workspace"
           element={
             <RequireAuth>
-              <WorkspacePage />
+              <EmptyWorkspace />
             </RequireAuth>
           }
         />
