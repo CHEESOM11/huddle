@@ -20,6 +20,11 @@ export class MessagesController {
     @Param('channelId') channelId: string,
     @Body('content') content: string,
     @Headers('authorization') authorization: string,
+    @Body('filePath') filePath?: string,
+    @Body('fileName') fileName?: string,
+    @Body('fileType') fileType?: string,
+    @Body('fileSize') fileSize?: number,
+    
   ) {
     const accessToken =
       authorization?.replace(
@@ -32,6 +37,10 @@ export class MessagesController {
         channelId,
         content,
         accessToken,
+        filePath,
+        fileName,
+        fileType,
+        fileSize,
       );
 
     return {
