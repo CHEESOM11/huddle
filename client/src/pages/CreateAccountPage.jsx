@@ -5,9 +5,21 @@ import { setToken, clearToken } from '../utils/storage';
 import Spinner from '../components/Spinner';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
-import { faGoogle } from '@fortawesome/free-brands-svg-icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const demoUsers = [
+  {
+    name: 'Alex Johnson',
+    email: 'alex@huddle.test',
+    note: 'as yourself',
+  },
+  {
+    name: 'Maya Chen',
+    email: 'maya@huddle.test',
+    note: "see Maya's view",
+  },
+];
 
 function CreateAccountPage() {
   const navigate = useNavigate();
@@ -34,8 +46,8 @@ function CreateAccountPage() {
 
     if (!password) {
       nextErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      nextErrors.password = 'Password must be at least 8 characters';
+    } else if (password.length < 6) {
+      nextErrors.password = 'Password must be at least 6 characters';
     }
 
     setErrors(nextErrors);
@@ -82,160 +94,207 @@ function CreateAccountPage() {
   };
 
   const inputClass = (hasError) =>
-    `w-full px-4 py-3 border rounded-lg transition-all duration-200 focus:outline-none focus:border-huddle-purple focus:ring-2 focus:ring-huddle-purple/20 ${
+    `w-full rounded-lg border bg-white px-4 py-3 text-gray-950 transition-all duration-200 placeholder:text-gray-400 focus:border-plum focus:outline-none focus:ring-2 focus:ring-plum/20 ${
       hasError ? 'border-red-500' : 'border-gray-200'
     }`;
 
+  const chooseDemoUser = (user) => {
+    setFullName(user.name);
+    setEmail(user.email);
+    setPassword('demo123');
+    setErrors({});
+    setSubmitError('');
+  };
+
   return (
-    <div className="min-h-screen bg-huddle-light flex flex-col items-center justify-center p-6">
-      {/* Logo */}
-      <div className="flex items-center gap-2 mb-8">
-        <div className="w-10 h-10 bg-huddle-purple rounded-lg flex items-center justify-center">
-          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" />
-          </svg>
+    <main className="flex min-h-screen flex-col bg-cream lg:flex-row">
+      <section className="flex min-h-[420px] flex-col bg-plum px-8 py-8 text-cream sm:px-12 lg:min-h-screen lg:w-[47%] lg:px-14 lg:py-10">
+        <div className="text-sm font-semibold tracking-wide text-cream/90">•••&nbsp;&nbsp;Huddle</div>
+
+        <div className="mt-14 max-w-xl lg:mt-24">
+          <h1 className="text-4xl font-bold leading-tight tracking-normal text-cream sm:text-5xl">
+            Your team,
+            <span className="block text-lime-300">always in sync</span>
+          </h1>
+          <p className="mt-5 max-w-lg text-base leading-7 text-cream/80">
+            Huddle keeps remote teams connected through channels — simple, fast, and focused on what matters.
+          </p>
+
+          <div className="mt-8 space-y-5">
+            <div className="flex gap-4">
+              <span className="text-2xl" aria-hidden="true">💬</span>
+              <div>
+                <p className="font-bold text-cream">Channel conversations</p>
+                <p className="text-sm text-cream/65">Organize discussions by topic or project</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <span className="text-2xl" aria-hidden="true">✉️</span>
+              <div>
+                <p className="font-bold text-cream">Direct messages</p>
+                <p className="text-sm text-cream/65">Private conversations with teammates</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <span className="text-2xl" aria-hidden="true">🔔</span>
+              <div>
+                <p className="font-bold text-cream">Smart notifications</p>
+                <p className="text-sm text-cream/65">Stay informed without the noise</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-9 rounded-2xl bg-white/10 p-5 text-sm leading-6 text-cream/85 ring-1 ring-white/15">
+            <strong className="text-lime-300">Sprint 1 scope:</strong>{' '}
+            Account creation, sign in, and channel messaging. Additional features ship in future sprints.
+          </div>
         </div>
-        <span className="text-xl font-semibold text-huddle-dark">Huddle</span>
-      </div>
 
-      {/* Create Account Card */}
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full form-rise">
-        <h1 className="text-2xl font-semibold text-huddle-dark text-center mb-2">Create Account</h1>
-        <p className="text-gray-500 text-center mb-6">Start collaborating with your team</p>
+        <p className="mt-10 text-xs text-cream/45 lg:mt-auto">Huddle — v0.1 sprint prototype</p>
+      </section>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          {/* Full Name Field */}
+      <section className="flex flex-1 items-center justify-center bg-cream px-6 py-10 sm:px-10 lg:w-[53%] lg:py-12">
+        <div className="w-full max-w-md form-rise">
           <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="fullName"
-              type="text"
-              placeholder="John Doe"
-              value={fullName}
-              onChange={(e) => {
-                setFullName(e.target.value);
-                if (errors.fullName) {
-                  setErrors((prev) => ({ ...prev, fullName: undefined }));
-                }
-              }}
-              required
-              className={inputClass(errors.fullName)}
-            />
-            {errors.fullName && (
-              <p className="form-message-in text-sm text-red-500 mt-1">{errors.fullName}</p>
-            )}
+            <h1 className="text-3xl font-bold tracking-normal text-black">Create your account</h1>
+            <p className="mt-2 text-sm text-gray-600">Join your team on Huddle</p>
           </div>
 
-          {/* Email Field */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="email"
-              type="email"
-              placeholder="name@company.com"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (errors.email) {
-                  setErrors((prev) => ({ ...prev, email: undefined }));
-                }
-              }}
-              required
-              className={inputClass(errors.email)}
-            />
-            {errors.email && (
-              <p className="form-message-in text-sm text-red-500 mt-1">{errors.email}</p>
-            )}
-          </div>
-
-          {/* Password Field */}
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
+            <div>
+              <label htmlFor="fullName" className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-700">
+                Full Name
+              </label>
               <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
+                id="fullName"
+                type="text"
+                placeholder="Alex Johnson"
+                value={fullName}
                 onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (errors.password) {
-                    setErrors((prev) => ({ ...prev, password: undefined }));
+                  setFullName(e.target.value);
+                  if (errors.fullName) {
+                    setErrors((prev) => ({ ...prev, fullName: undefined }));
                   }
                 }}
                 required
-                className={`${inputClass(errors.password)} pr-10`}
+                className={inputClass(errors.fullName)}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? (
-                  <span key="show" className="form-icon-in inline-flex">
-                    <FontAwesomeIcon icon={faEyeSlash} className="w-5 h-5" />
-                  </span>
-                ) : (
-                  <span key="hide" className="form-icon-in inline-flex">
-                    <FontAwesomeIcon icon={faEye} className="w-5 h-5" />
-                  </span>
-                )}
-              </button>
+              {errors.fullName && (
+                <p className="form-message-in mt-1 text-sm text-red-500">{errors.fullName}</p>
+              )}
             </div>
-            {errors.password && (
-              <p className="form-message-in text-sm text-red-500 mt-1">{errors.password}</p>
+
+            <div>
+              <label htmlFor="email" className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-700">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) {
+                    setErrors((prev) => ({ ...prev, email: undefined }));
+                  }
+                }}
+                required
+                className={inputClass(errors.email)}
+              />
+              {errors.email && (
+                <p className="form-message-in mt-1 text-sm text-red-500">{errors.email}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="password" className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-700">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min 6 characters"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password) {
+                      setErrors((prev) => ({ ...prev, password: undefined }));
+                    }
+                  }}
+                  required
+                  className={`${inputClass(errors.password)} pr-10`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <span key="show" className="form-icon-in inline-flex">
+                      <FontAwesomeIcon icon={faEyeSlash} className="h-5 w-5" />
+                    </span>
+                  ) : (
+                    <span key="hide" className="form-icon-in inline-flex">
+                      <FontAwesomeIcon icon={faEye} className="h-5 w-5" />
+                    </span>
+                  )}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="form-message-in mt-1 text-sm text-red-500">{errors.password}</p>
+              )}
+            </div>
+
+            {submitError && (
+              <p className="form-message-in text-sm text-red-500">{submitError}</p>
             )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-plum px-6 py-3 font-medium text-white transition duration-200 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <Spinner />
+                  Creating account...
+                </>
+              ) : (
+                'Create account & join'
+              )}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-gray-600">
+            Already have an account?{' '}
+            <Link to="/sign-in" className="font-bold text-plum hover:underline">
+              Sign in
+            </Link>
+            .
+          </p>
+
+          <div className="mt-8">
+            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Quick demo access</p>
+            <div className="mt-3 space-y-2">
+              {demoUsers.map((user) => (
+                <button
+                  key={user.email}
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-plum/40 hover:bg-white/80"
+                  onClick={() => chooseDemoUser(user)}
+                >
+                  <span className="font-semibold text-black">{user.name}</span>
+                  <span className="text-sm text-gray-500">{user.note}</span>
+                </button>
+              ))}
+            </div>
           </div>
-
-          {submitError && (
-            <p className="form-message-in text-sm text-red-500">{submitError}</p>
-          )}
-
-          {/* Create Account Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-huddle-purple hover:bg-huddle-purple-hover disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition duration-200 active:scale-[0.99] flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Spinner />
-                Creating Account...
-              </>
-            ) : (
-              'Create Account'
-            )}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div className="flex items-center gap-4 my-6">
-          <div className="flex-1 h-px bg-gray-200"></div>
-          <span className="text-xs text-gray-400 uppercase">or continue with</span>
-          <div className="flex-1 h-px bg-gray-200"></div>
         </div>
-
-        {/* Google Sign Up */}
-        <button className="w-full border-2 border-gray-200 hover:border-gray-300 text-huddle-dark font-medium py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition duration-200 active:scale-[0.99]">
-          <FontAwesomeIcon icon={faGoogle} className="w-5 h-5" />
-          Sign up with Google
-        </button>
-
-        {/* Sign In Link */}
-        <p className="text-center text-gray-500 text-sm mt-6">
-          Already have an account?{' '}
-          <Link to="/sign-in" className="text-huddle-purple font-medium hover:underline">
-            Sign In
-          </Link>
-        </p>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 
