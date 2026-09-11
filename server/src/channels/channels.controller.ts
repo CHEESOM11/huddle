@@ -44,12 +44,11 @@ export class ChannelsController {
   @Post(":channelId/invite")
   async inviteUser(
     @Param("channelId") channelId: string,
-    @Body("email") email: string,
     @Headers("authorization") authorization: string,
   ) {
     const accessToken = authorization?.replace(/^Bearer\s+/i, '');
 
-    return this.channelsService.inviteUser(channelId, email, accessToken);
+    return this.channelsService.inviteUser(channelId, accessToken);
   }
 
 
