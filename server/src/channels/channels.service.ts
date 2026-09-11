@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "../config/supabaseAdmin";
 
 @Injectable()
 export class ChannelsService {
@@ -89,9 +91,8 @@ export class ChannelsService {
     };
   }
 
-  
-    //Get channels the authenticated user belongs to.
-   
+  //Get channels the authenticated user belongs to.
+
   async getChannels(accessToken: string) {
     if (!accessToken) {
       throw new UnauthorizedException("Authorization token is required.");
@@ -136,7 +137,7 @@ export class ChannelsService {
   }
 
   //Join an existing channel.
-   
+
   async joinChannel(channelId: string, accessToken: string) {
     if (!channelId) {
       throw new BadRequestException("Channel ID is required.");
@@ -201,4 +202,183 @@ export class ChannelsService {
       channel,
     };
   }
+
+  async deleteChannel(channelId: string, accessToken: string) {
+    if (!channelId) {
+      throw new BadRequestException("Channel ID is required.");
+    }
+
+    if (!accessToken) {
+      throw new UnauthorizedException("Authorization token is required.");
+    }
+
+    const supabase = this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      throw new UnauthorizedException(
+        "Invalid or expired authorization token.",
+      );
+    }
+
+    const { data: channel, error: channelError } = await supabase
+      .from("channels")
+      .select("id, created_by")
+      .eq("id", channelId)
+      .single();
+
+    if (channelError || !channel) {
+      throw new NotFoundException("Channel not found.");
+    }
+
+    if (channel.created_by !== user.id) {
+      throw new ForbiddenException("You can only delete channels you created.");
+    }
+
+    const { error: deleteError } = await supabase
+      .from("channels")
+      .delete()
+      .eq("id", channelId);
+
+    if (deleteError) {
+      throw new BadRequestException(deleteError.message);
+    }
+
+    return {
+      message: "Channel deleted successfully.",
+    };
+  }
+
+  async inviteUser(
+  channelId: string,
+  email: string,
+  accessToken: string,
+) {
+  if (!channelId) {
+    throw new BadRequestException('Channel ID is required.');
+  }
+
+  if (!email || !email.trim()) {
+    throw new BadRequestException('Email is required.');
+  }
+
+  if (!accessToken) {
+    throw new UnauthorizedException(
+      'Authorization token is required.',
+    );
+  }
+
+  // Authenticate the person making the invitation
+  const supabase = this.getAuthenticatedClient(accessToken);
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser(accessToken);
+
+  if (userError || !user) {
+    throw new UnauthorizedException(
+      'Invalid or expired authorization token.',
+    );
+  }
+
+  // Check that the channel exists
+  const {
+    data: channel,
+    error: channelError,
+  } = await supabase
+    .from('channels')
+    .select('id, name, created_by, created_at')
+    .eq('id', channelId)
+    .single();
+
+  if (channelError || !channel) {
+    throw new NotFoundException('Channel not found.');
+  }
+
+  // Check that the inviter belongs to the channel
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
+    .from('channel_members')
+    .select('channel_id, user_id')
+    .eq('channel_id', channelId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(membershipError.message);
+  }
+
+  if (!membership) {
+    throw new ForbiddenException(
+      'You must be a member of this channel to invite others.',
+    );
+  }
+
+  // Find the person being invited
+  const {
+    data: { users },
+    error: listError,
+  } = await supabaseAdmin.auth.admin.listUsers();
+
+  if (listError) {
+    throw new BadRequestException(listError.message);
+  }
+
+  const invitee = users.find(
+    (u) =>
+      u.email?.toLowerCase() ===
+      email.trim().toLowerCase(),
+  );
+
+  if (!invitee) {
+    throw new NotFoundException(
+      'No user found with that email.',
+    );
+  }
+
+  // Check whether the user is already a member
+  const {
+    data: existing,
+    error: existingError,
+  } = await supabaseAdmin
+    .from('channel_members')
+    .select('channel_id, user_id')
+    .eq('channel_id', channelId)
+    .eq('user_id', invitee.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new BadRequestException(existingError.message);
+  }
+
+  if (existing) {
+    throw new ConflictException(
+      'User is already a member of this channel.',
+    );
+  }
+
+  // Add the invited user to the channel
+  const { error: insertError } = await supabaseAdmin
+    .from('channel_members')
+    .insert({
+      channel_id: channelId,
+      user_id: invitee.id,
+    });
+
+  if (insertError) {
+    throw new BadRequestException(insertError.message);
+  }
+
+  return {
+    message: 'User invited successfully.',
+    channel,
+  };
+}
 }
