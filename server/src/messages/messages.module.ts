@@ -5,10 +5,15 @@ import { MessagesGateway } from './messages.gateway';
 import { MessagesService } from './messages.service';
 
 @Module({
-  controllers: [MessagesController],
+  controllers: [
+    MessagesController,
+  ],
   providers: [
     MessagesService,
     MessagesGateway,
+  ],
+  exports: [
+    MessagesService,
   ],
 })
 export class MessagesModule {}

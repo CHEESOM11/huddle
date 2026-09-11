@@ -4,37 +4,35 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-} from "@nestjs/websockets";
+} from '@nestjs/websockets';
 
-import { Server, Socket } from "socket.io";
+import { Server, Socket } from 'socket.io';
 
-import { MessagesService } from "./messages.service";
+import { createClient } from '@supabase/supabase-js';
+
+import { MessagesService } from './messages.service';
 
 @WebSocketGateway({
   cors: {
-    origin: "*",
+    origin: '*',
   },
 })
 export class MessagesGateway {
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    private readonly messagesService: MessagesService,
+  ) {}
 
-  /**
-   * Authenticate a Socket.IO connection.
-   * The frontend should send:
-   * auth: {
-   *   token: "USER_ACCESS_TOKEN"
-   * }
-   */
   async handleConnection(client: Socket) {
     try {
       const token = this.extractToken(client);
 
       if (!token) {
-        client.emit("auth_error", {
-          message: "Authorization token is required.",
+        client.emit('error', {
+          message:
+            'Authentication token is required.',
         });
 
         client.disconnect();
@@ -42,101 +40,129 @@ export class MessagesGateway {
         return;
       }
 
-      const user = await this.messagesService.getAuthenticatedUser(token);
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_PUBLISHABLE_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false,
+          },
+        },
+      );
 
-      // Store authentication information
-      // on the socket for later events.
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error || !user) {
+        client.emit('error', {
+          message:
+            'Invalid or expired authentication token.',
+        });
+
+        client.disconnect();
+
+        return;
+      }
+
+      const name =
+        user.user_metadata?.name ??
+        user.user_metadata?.full_name ??
+        user.email ??
+        'Someone';
+
       client.data.accessToken = token;
       client.data.userId = user.id;
+      client.data.name = name;
 
-      client.emit("authenticated", {
+      client.emit('authenticated', {
         userId: user.id,
+        name,
       });
-
-      console.log(`Socket authenticated: ${user.id}`);
     } catch (error) {
-      client.emit("auth_error", {
+      client.emit('error', {
         message:
-          error instanceof Error ? error.message : "Authentication failed.",
+          error instanceof Error
+            ? error.message
+            : 'Socket authentication failed.',
       });
 
       client.disconnect();
     }
   }
 
-  // Disconnect handler.
-
   handleDisconnect(client: Socket) {
-    console.log(`Socket disconnected: ${client.id}`);
+    console.log(
+      `Socket disconnected: ${client.id}`,
+    );
   }
 
-  @SubscribeMessage("join_channel")
+  @SubscribeMessage('join_channel')
   async joinChannel(
     @MessageBody()
-    body: {
-      channelId: string;
-    },
-
+    body: { channelId: string },
     @ConnectedSocket()
     client: Socket,
   ) {
     try {
       const channelId = body?.channelId;
-
-      const accessToken = client.data.accessToken;
-
+      const accessToken =
+        client.data.accessToken;
       const userId = client.data.userId;
-
-      if (!channelId) {
-        return {
-          event: "error",
-          message: "Channel ID is required.",
-        };
-      }
 
       if (!accessToken || !userId) {
         return {
-          event: "error",
-          message: "Socket authentication required.",
+          event: 'error',
+          message:
+            'Socket authentication required.',
         };
       }
 
-      // Verify channel exists.
-      await this.messagesService.verifyChannelExists(channelId, accessToken);
+      if (!channelId) {
+        return {
+          event: 'error',
+          message: 'channelId is required.',
+        };
+      }
 
-      // Verify user belongs to channel.
       await this.messagesService.verifyChannelMembership(
         channelId,
         userId,
         accessToken,
       );
 
-      // Add socket to the channel room.
-      await client.join(this.getRoomName(channelId));
+      const room =
+        this.getRoomName(channelId);
 
-      client.data.channelId = channelId;
+      await client.join(room);
 
       return {
-        event: "channel_joined",
+        event: 'channel_joined',
         channelId,
       };
     } catch (error) {
       return {
-        event: "error",
+        event: 'error',
         message:
-          error instanceof Error ? error.message : "Unable to join channel.",
+          error instanceof Error
+            ? error.message
+            : 'Unable to join channel.',
       };
     }
   }
 
-  // Leave a channel room.
-  @SubscribeMessage("leave_channel")
+  @SubscribeMessage('leave_channel')
   async leaveChannel(
     @MessageBody()
-    body: {
-      channelId: string;
-    },
-
+    body: { channelId: string },
     @ConnectedSocket()
     client: Socket,
   ) {
@@ -144,120 +170,306 @@ export class MessagesGateway {
 
     if (!channelId) {
       return {
-        event: "error",
-        message: "Channel ID is required.",
+        event: 'error',
+        message: 'channelId is required.',
       };
     }
 
-    await client.leave(this.getRoomName(channelId));
+    const room =
+      this.getRoomName(channelId);
 
-    if (client.data.channelId === channelId) {
-      client.data.channelId = undefined;
-    }
+    await client.leave(room);
 
     return {
-      event: "channel_left",
+      event: 'channel_left',
       channelId,
     };
   }
 
-  // Send a real-time message.
-  @SubscribeMessage("send_message")
+  @SubscribeMessage('send_message')
   async sendMessage(
     @MessageBody()
     body: {
       channelId: string;
       content: string;
     },
-
     @ConnectedSocket()
     client: Socket,
   ) {
     try {
       const channelId = body?.channelId;
-
       const content = body?.content;
 
-      const accessToken = client.data.accessToken;
+      const accessToken =
+        client.data.accessToken;
 
-      if (!accessToken) {
+      const userId = client.data.userId;
+
+      if (!accessToken || !userId) {
         return {
-          event: "message_error",
-          message: "Socket authentication required.",
+          event: 'error',
+          message:
+            'Socket authentication required.',
         };
       }
 
-      if (!channelId) {
+      if (!channelId || !content?.trim()) {
         return {
-          event: "message_error",
-          message: "Channel ID is required.",
+          event: 'error',
+          message:
+            'channelId and content are required.',
         };
       }
 
-      if (!content || !content.trim()) {
-        return {
-          event: "message_error",
-          message: "Message content cannot be empty.",
-        };
-      }
-
-      // Make sure this socket has joined
-      // the requested channel room.
-      const room = this.getRoomName(channelId);
+      const room =
+        this.getRoomName(channelId);
 
       if (!client.rooms.has(room)) {
         return {
-          event: "message_error",
-          message: "You must join this channel before sending messages.",
+          event: 'error',
+          message:
+            'You must join the channel first.',
         };
       }
 
-      // Save to Supabase.
-      const message = await this.messagesService.sendMessage(
-        channelId,
-        content,
-        accessToken,
-      );
+      const message =
+        await this.messagesService.sendMessage(
+          channelId,
+          content,
+          accessToken,
+        );
 
-      // Broadcast to everyone inside this channel.
-      this.server.to(room).emit("new_message", message);
+      this.server
+        .to(room)
+        .emit('new_message', {
+          ...message,
+          reactions: [],
+        });
 
       return {
-        event: "message_sent",
-        data: message,
+        event: 'message_sent',
+        data: {
+          ...message,
+          reactions: [],
+        },
       };
     } catch (error) {
       return {
-        event: "message_error",
+        event: 'error',
         message:
-          error instanceof Error ? error.message : "Unable to send message.",
+          error instanceof Error
+            ? error.message
+            : 'Unable to send message.',
       };
     }
   }
 
-  /**
-   * Extract the access token from
-   * the Socket.IO handshake.
-   */
-  private extractToken(client: Socket): string | null {
-    const authToken = client.handshake.auth?.token;
+  @SubscribeMessage('typing')
+  async typing(
+    @MessageBody()
+    body: { channelId: string },
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    const channelId = body?.channelId;
+    const room =
+      this.getRoomName(channelId);
 
-    if (typeof authToken === "string") {
-      return authToken.replace(/^Bearer\s+/i, "");
+    if (
+      channelId &&
+      client.rooms.has(room)
+    ) {
+      client.to(room).emit(
+        'user_typing',
+        {
+          userId: client.data.userId,
+          name: client.data.name,
+        },
+      );
+    }
+  }
+
+  @SubscribeMessage('stop_typing')
+  async stopTyping(
+    @MessageBody()
+    body: { channelId: string },
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    const channelId = body?.channelId;
+    const room =
+      this.getRoomName(channelId);
+
+    if (
+      channelId &&
+      client.rooms.has(room)
+    ) {
+      client.to(room).emit(
+        'user_stopped_typing',
+        {
+          userId: client.data.userId,
+        },
+      );
+    }
+  }
+
+  @SubscribeMessage('toggle_reaction')
+  async toggleReaction(
+    @MessageBody()
+    body: {
+      channelId: string;
+      messageId: string;
+      emoji: string;
+    },
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const {
+        channelId,
+        messageId,
+        emoji,
+      } = body ?? {};
+
+      const accessToken =
+        client.data.accessToken;
+
+      const userId =
+        client.data.userId;
+
+      if (!accessToken || !userId) {
+        return {
+          event: 'error',
+          message:
+            'Socket authentication required.',
+        };
+      }
+
+      if (
+        !channelId ||
+        !messageId ||
+        !emoji
+      ) {
+        return {
+          event: 'error',
+          message:
+            'channelId, messageId, and emoji are required.',
+        };
+      }
+
+      const room =
+        this.getRoomName(channelId);
+
+      if (!client.rooms.has(room)) {
+        return {
+          event: 'error',
+          message:
+            'You must join the channel first.',
+        };
+      }
+
+      await this.messagesService.verifyChannelMembership(
+        channelId,
+        userId,
+        accessToken,
+      );
+
+      /*
+       * Make sure the message actually
+       * belongs to this channel.
+       */
+      const reactionsMessageCheck =
+        await this.messagesService.getMessages(
+          channelId,
+          accessToken,
+        );
+
+      const messageExists =
+        reactionsMessageCheck.some(
+          (message) =>
+            message.id === messageId,
+        );
+
+      if (!messageExists) {
+        return {
+          event: 'error',
+          message:
+            'Message does not belong to this channel.',
+        };
+      }
+
+      await this.messagesService.toggleReaction(
+        messageId,
+        emoji,
+        userId,
+        accessToken,
+      );
+
+      const reactionsMap =
+        await this.messagesService.getReactions(
+          [messageId],
+          accessToken,
+        );
+
+      const reactions =
+        reactionsMap.get(messageId) ?? [];
+
+      this.server
+        .to(room)
+        .emit(
+          'reaction_updated',
+          {
+            messageId,
+            reactions,
+          },
+        );
+
+      return {
+        event: 'reaction_toggled',
+        messageId,
+        reactions,
+      };
+    } catch (error) {
+      return {
+        event: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Unable to toggle reaction.',
+      };
+    }
+  }
+
+  private extractToken(
+    client: Socket,
+  ): string | null {
+    const authToken =
+      client.handshake.auth?.token;
+
+    if (authToken) {
+      return authToken.replace(
+        /^Bearer\s+/i,
+        '',
+      );
     }
 
-    const authorization = client.handshake.headers.authorization;
+    const authorization =
+      client.handshake.headers
+        .authorization;
 
-    if (typeof authorization === "string") {
-      return authorization.replace(/^Bearer\s+/i, "");
+    if (authorization) {
+      return authorization.replace(
+        /^Bearer\s+/i,
+        '',
+      );
     }
 
     return null;
   }
 
-  // Prevent room-name collisions.
-
-  private getRoomName(channelId: string): string {
+  private getRoomName(
+    channelId: string,
+  ) {
     return `channel:${channelId}`;
   }
 }

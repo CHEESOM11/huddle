@@ -15,19 +15,11 @@ export class MessagesController {
     private readonly messagesService: MessagesService,
   ) {}
 
-  /**
-   * REST endpoint for sending a message.
-   *
-   * POST /api/channels/:channelId/messages
-   */
   @Post(':channelId/messages')
   async sendMessage(
     @Param('channelId') channelId: string,
-
     @Body('content') content: string,
-
-    @Headers('authorization')
-    authorization: string,
+    @Headers('authorization') authorization: string,
   ) {
     const accessToken =
       authorization?.replace(
@@ -44,21 +36,17 @@ export class MessagesController {
 
     return {
       message: 'Message sent successfully.',
-      data: message,
+      data: {
+        ...message,
+        reactions: [],
+      },
     };
   }
 
-  /**
-   * REST endpoint for retrieving message history.
-   *
-   * GET /api/channels/:channelId/messages
-   */
   @Get(':channelId/messages')
   async getMessages(
     @Param('channelId') channelId: string,
-
-    @Headers('authorization')
-    authorization: string,
+    @Headers('authorization') authorization: string,
   ) {
     const accessToken =
       authorization?.replace(
@@ -73,8 +61,7 @@ export class MessagesController {
       );
 
     return {
-      message:
-        'Messages retrieved successfully.',
+      message: 'Messages retrieved successfully.',
       data: messages,
     };
   }
