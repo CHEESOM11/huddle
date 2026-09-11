@@ -10,8 +10,10 @@ import Onboarding from './pages/Onboarding';
 import ProfileSetupPage from './pages/ProfileSetupPage';
 import ConfirmEmailPage from './pages/ConfirmEmailPage';
 import EmptyWorkspace from './pages/EmptyWorkSpace';
+import JoinInvitePage from './pages/JoinInvitePage';
 import { getCurrentSession } from './api/auth';
-import { getToken, clearToken, hasSeenOnboarding } from './utils/storage';
+import { acceptInvite } from './api/invites';
+import { getToken, clearToken, hasSeenOnboarding, getPendingInvite, clearPendingInvite } from './utils/storage';
 import FullPageLoader from './components/FullPageLoader';
 
 function StartupGate() {
@@ -112,6 +114,16 @@ function RequireAuth({ children }) {
       }
 
       if (user) {
+        // Redeem any invite link the user opened before signing in/up.
+        const inviteCode = getPendingInvite();
+        if (inviteCode) {
+          try {
+            await acceptInvite(inviteCode);
+          } catch {
+            // A failed or expired invite shouldn't block access.
+          }
+          clearPendingInvite();
+        }
         setState('authenticated');
         return;
       }
@@ -154,6 +166,7 @@ function App() {
         <Route path="/confirm-email" element={<ConfirmEmailPage />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile-setup" element={<ProfileSetupPage />} />
+        <Route path="/join/:code" element={<JoinInvitePage />} />
         <Route
           path="/workspace"
           element={

@@ -35,12 +35,3 @@ export async function deleteChannel(channelId) {
   const token = getToken()
   await request(`/api/channels/${channelId}`, { method: 'DELETE', token })
 }
-
-export async function inviteUser(channelId, email) {
-  const token = getToken()
-  await request(`/api/channels/${channelId}/invite`, {
-    method: 'POST',
-    token,
-    body: { email },
-  })
-}

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import channelImage from "../assets/channel.png";
 import { clearToken } from "../utils/storage";
-import { fetchChannels, createChannel, deleteChannel, inviteUser } from "../api/channels";
+import { fetchChannels, createChannel, deleteChannel } from "../api/channels";
+import { createInvite } from "../api/invites";
 import { fetchMessages } from "../api/messages";
 import { getSocket } from "../lib/socket";
 import Spinner from "../components/Spinner";
@@ -515,46 +516,63 @@ function MessageList({ messages, currentUserId, onToggleReaction }) {
 }
 
 function InviteForm({ channelId, onClose }) {
-  const [email, setEmail] = useState("");
+  const [link, setLink] = useState("");
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-
+  const generate = async () => {
     setPending(true);
-    setResult(null);
+    setError("");
     try {
-      await inviteUser(channelId, trimmed);
-      setResult({ ok: true, message: `Invited ${trimmed}` });
-      setEmail("");
+      const data = await createInvite(channelId);
+      setLink(`${window.location.origin}/join/${data.code}`);
     } catch (err) {
-      setResult({ ok: false, message: err.message });
+      setError(err.message);
     } finally {
       setPending(false);
     }
   };
 
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
-      <input
-        autoFocus
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        disabled={pending}
-        placeholder="Email address"
-        className="w-52 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/20"
-      />
-      <button
-        type="submit"
-        disabled={pending || !email.trim()}
-        className="rounded-md bg-[#4F46E5] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#4338CA] disabled:opacity-60"
-      >
-        {pending ? "Inviting…" : "Invite"}
-      </button>
+    <div className="flex items-center gap-2">
+      {link ? (
+        <>
+          <input
+            readOnly
+            value={link}
+            onFocus={(e) => e.target.select()}
+            className="w-64 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-600 outline-none"
+          />
+          <button
+            type="button"
+            onClick={copy}
+            className="rounded-md bg-[#4F46E5] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#4338CA]"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={generate}
+          disabled={pending}
+          className="rounded-md bg-[#4F46E5] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#4338CA] disabled:opacity-60"
+        >
+          {pending ? "Generating…" : "Generate link"}
+        </button>
+      )}
       <button
         type="button"
         onClick={onClose}
@@ -563,14 +581,8 @@ function InviteForm({ channelId, onClose }) {
       >
         Cancel
       </button>
-      {result && (
-        <span
-          className={`text-xs ${result.ok ? "text-green-600" : "text-red-500"}`}
-        >
-          {result.message}
-        </span>
-      )}
-    </form>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
   );
 }
 
@@ -985,7 +997,7 @@ export default function EmptyWorkspace() {
     stopTyping();
 
     getSocket().emit("send_message", { channelId, content }, (ack) => {
-      if (ack?.event === "message_error") {
+      if (ack?.event === "error") {
         setMessageDraft(content);
         setSendError(ack.message || "Failed to send message.");
       }
