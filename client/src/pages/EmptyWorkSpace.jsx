@@ -348,7 +348,137 @@ function ErrorState({ message, onRetry }) {
   );
 }
 
-function MessageList({ messages, currentUserId }) {
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
+
+function ReactionChip({ reaction, me, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`reaction-pop inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition ${
+        me
+          ? "border-[#4F46E5] bg-[#4F46E5]/10 text-[#4F46E5]"
+          : "border-gray-200 bg-white text-gray-600 hover:border-[#4F46E5]/40"
+      }`}
+    >
+      <span>{reaction.emoji}</span>
+      <span className="font-medium">{reaction.count}</span>
+    </button>
+  );
+}
+
+function MessageRow({ message, own, currentUserId, onToggleReaction }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const reactions = message.reactions ?? [];
+
+  const addReactionButton = (
+    <div className="relative self-end opacity-0 transition group-hover:opacity-100">
+      {pickerOpen ? (
+        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-lg">
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                onToggleReaction(message.id, emoji);
+                setPickerOpen(false);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-base transition hover:bg-gray-100"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          aria-label="Add reaction"
+          onClick={() => setPickerOpen(true)}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+        >
+          <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      className={`group flex items-end gap-1 ${
+        own ? "justify-end" : "justify-start"
+      }`}
+    >
+      {own && addReactionButton}
+      <div
+        className={`flex max-w-[70%] flex-col gap-1 ${
+          own ? "items-end" : "items-start"
+        }`}
+      >
+        <div
+          className={`message-in rounded-lg px-4 py-2 text-sm ${
+            own ? "bg-[#4F46E5] text-white" : "bg-gray-100 text-gray-900"
+          }`}
+        >
+          <p className="break-words">{message.content}</p>
+          <span
+            className={`mt-1 block text-[11px] ${
+              own ? "text-white/70" : "text-gray-400"
+            }`}
+          >
+            {message.created_at
+              ? new Date(message.created_at).toLocaleTimeString()
+              : ""}
+          </span>
+        </div>
+
+        {reactions.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {reactions.map((reaction) => (
+              <ReactionChip
+                key={reaction.emoji}
+                reaction={reaction}
+                me={(reaction.users ?? []).includes(currentUserId)}
+                onClick={() => onToggleReaction(message.id, reaction.emoji)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      {!own && addReactionButton}
+    </div>
+  );
+}
+
+function TypingIndicator({ users }) {
+  if (!users || users.length === 0) return null;
+
+  let label;
+  if (users.length === 1) {
+    label = `${users[0].name || "Someone"} is typing`;
+  } else if (users.length === 2) {
+    label = `${users[0].name || "Someone"} and ${
+      users[1].name || "someone"
+    } are typing`;
+  } else {
+    label = "Several people are typing";
+  }
+
+  return (
+    <div className="flex h-6 shrink-0 items-center gap-2 px-8 text-xs text-gray-500">
+      <span>{label}</span>
+      <span
+        className="flex items-center gap-0.5 text-gray-400"
+        aria-hidden="true"
+      >
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+      </span>
+    </div>
+  );
+}
+
+function MessageList({ messages, currentUserId, onToggleReaction }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -371,32 +501,15 @@ function MessageList({ messages, currentUserId }) {
       ref={containerRef}
       className="min-h-0 flex-1 space-y-2 overflow-y-auto px-8 py-4"
     >
-      {messages.map((message) => {
-        const own = message.user_id === currentUserId;
-        return (
-          <div
-            key={message.id}
-            className={`flex ${own ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[70%] rounded-lg px-4 py-2 text-sm ${
-                own ? "bg-[#4F46E5] text-white" : "bg-gray-100 text-gray-900"
-              }`}
-            >
-              <p className="break-words">{message.content}</p>
-              <span
-                className={`mt-1 block text-[11px] ${
-                  own ? "text-white/70" : "text-gray-400"
-                }`}
-              >
-                {message.created_at
-                  ? new Date(message.created_at).toLocaleTimeString()
-                  : ""}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+      {messages.map((message) => (
+        <MessageRow
+          key={message.id}
+          message={message}
+          own={message.user_id === currentUserId}
+          currentUserId={currentUserId}
+          onToggleReaction={onToggleReaction}
+        />
+      ))}
     </div>
   );
 }
@@ -461,7 +574,13 @@ function InviteForm({ channelId, onClose }) {
   );
 }
 
-function ChannelView({ channel, messages, currentUserId }) {
+function ChannelView({
+  channel,
+  messages,
+  currentUserId,
+  typingUsers,
+  onToggleReaction,
+}) {
   const [isInviting, setIsInviting] = useState(false);
 
   return (
@@ -487,7 +606,12 @@ function ChannelView({ channel, messages, currentUserId }) {
           )}
         </div>
       </header>
-      <MessageList messages={messages} currentUserId={currentUserId} />
+      <MessageList
+        messages={messages}
+        currentUserId={currentUserId}
+        onToggleReaction={onToggleReaction}
+      />
+      <TypingIndicator users={typingUsers} />
     </section>
   );
 }
@@ -576,7 +700,7 @@ function Composer({ channelName, value, onChange, onSend, disabled }) {
   );
 }
 
-function SettingsChannelRow({ channel, onDelete }) {
+function SettingsChannelRow({ channel, canDelete, onDelete }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -631,13 +755,15 @@ function SettingsChannelRow({ channel, onDelete }) {
         />
         <span className="truncate">{channel.name}</span>
       </span>
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
-      >
-        Delete
-      </button>
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
+        >
+          Delete
+        </button>
+      )}
     </li>
   );
 }
@@ -700,7 +826,7 @@ function NotificationsPanel({ notifications, onClose, onClear }) {
   );
 }
 
-function SettingsPanel({ channels, onClose, onDeleteChannel }) {
+function SettingsPanel({ channels, currentUserId, onClose, onDeleteChannel }) {
   return (
     <>
       <div
@@ -737,6 +863,7 @@ function SettingsPanel({ channels, onClose, onDeleteChannel }) {
                 <SettingsChannelRow
                   key={channel.id}
                   channel={channel}
+                  canDelete={channel.createdBy === currentUserId}
                   onDelete={onDeleteChannel}
                 />
               ))}
@@ -764,7 +891,12 @@ export default function EmptyWorkspace() {
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [typingUsers, setTypingUsers] = useState([]);
   const currentChannelRef = useRef(null);
+  const currentUserIdRef = useRef(null);
+  const typingAtRef = useRef(0);
+  const typingTimerRef = useRef(null);
+  const typingTimeoutsRef = useRef({});
 
   const handleSelectChannel = useCallback((channelId) => {
     if (!channelId || channelId === currentChannelRef.current) return;
@@ -778,9 +910,17 @@ export default function EmptyWorkspace() {
     currentChannelRef.current = channelId;
     setSelectedChannelId(channelId);
     setMessages([]);
+    setTypingUsers([]);
 
     fetchMessages(channelId)
-      .then((list) => setMessages(list))
+      .then((list) =>
+        setMessages(
+          (list ?? []).map((message) => ({
+            ...message,
+            reactions: message.reactions ?? [],
+          }))
+        )
+      )
       .catch(() => setMessages([]));
 
     socket.emit("join_channel", { channelId }, (ack) => {
@@ -790,6 +930,51 @@ export default function EmptyWorkspace() {
     });
   }, []);
 
+  const emitTyping = (typing) => {
+    const channelId = currentChannelRef.current;
+    if (!channelId) return;
+    getSocket().emit(typing ? "typing" : "stop_typing", { channelId });
+  };
+
+  const stopTyping = () => {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    emitTyping(false);
+  };
+
+  const handleMessageChange = (value) => {
+    setMessageDraft(value);
+    if (sendError) setSendError("");
+
+    if (value.trim()) {
+      const now = Date.now();
+      if (now - typingAtRef.current > 2000) {
+        typingAtRef.current = now;
+        emitTyping(true);
+      }
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => emitTyping(false), 3000);
+    } else {
+      stopTyping();
+    }
+  };
+
+  const handleToggleReaction = (messageId, emoji) => {
+    const channelId = currentChannelRef.current;
+    if (!channelId || !messageId || !emoji) return;
+    getSocket().emit(
+      "toggle_reaction",
+      { channelId, messageId, emoji },
+      (ack) => {
+        if (ack?.event === "error") {
+          setSendError(ack.message || "Couldn't react.");
+        }
+      }
+    );
+  };
+
   const handleSendMessage = () => {
     const content = messageDraft.trim();
     const channelId = currentChannelRef.current;
@@ -797,6 +982,7 @@ export default function EmptyWorkspace() {
 
     setSendError("");
     setMessageDraft("");
+    stopTyping();
 
     getSocket().emit("send_message", { channelId, content }, (ack) => {
       if (ack?.event === "message_error") {
@@ -809,11 +995,15 @@ export default function EmptyWorkspace() {
   useEffect(() => {
     const socket = getSocket();
 
-    const handleAuthenticated = ({ userId }) => setCurrentUserId(userId);
+    const handleAuthenticated = ({ userId }) => {
+      currentUserIdRef.current = userId;
+      setCurrentUserId(userId);
+    };
     const handleNewMessage = (message) => {
       if (message?.channel_id !== currentChannelRef.current) return;
+      const normalized = { ...message, reactions: message.reactions ?? [] };
       setMessages((prev) =>
-        prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+        prev.some((m) => m.id === message.id) ? prev : [...prev, normalized]
       );
     };
     const handleAddedToChannel = (payload) => {
@@ -826,15 +1016,49 @@ export default function EmptyWorkspace() {
         .then((data) => setChannels(data))
         .catch(() => {});
     };
+    const handleUserTyping = ({ userId, name }) => {
+      if (!userId || userId === currentUserIdRef.current) return;
+      if (typingTimeoutsRef.current[userId]) {
+        clearTimeout(typingTimeoutsRef.current[userId]);
+      }
+      setTypingUsers((prev) =>
+        prev.some((u) => u.userId === userId)
+          ? prev.map((u) => (u.userId === userId ? { userId, name } : u))
+          : [...prev, { userId, name }]
+      );
+      typingTimeoutsRef.current[userId] = setTimeout(() => {
+        setTypingUsers((prev) => prev.filter((u) => u.userId !== userId));
+      }, 3500);
+    };
+    const handleUserStoppedTyping = ({ userId }) => {
+      if (typingTimeoutsRef.current[userId]) {
+        clearTimeout(typingTimeoutsRef.current[userId]);
+        delete typingTimeoutsRef.current[userId];
+      }
+      setTypingUsers((prev) => prev.filter((u) => u.userId !== userId));
+    };
+    const handleReactionUpdated = ({ messageId, reactions }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, reactions: reactions ?? [] } : m
+        )
+      );
+    };
 
     socket.on("authenticated", handleAuthenticated);
     socket.on("new_message", handleNewMessage);
     socket.on("added_to_channel", handleAddedToChannel);
+    socket.on("user_typing", handleUserTyping);
+    socket.on("user_stopped_typing", handleUserStoppedTyping);
+    socket.on("reaction_updated", handleReactionUpdated);
 
     return () => {
       socket.off("authenticated", handleAuthenticated);
       socket.off("new_message", handleNewMessage);
       socket.off("added_to_channel", handleAddedToChannel);
+      socket.off("user_typing", handleUserTyping);
+      socket.off("user_stopped_typing", handleUserStoppedTyping);
+      socket.off("reaction_updated", handleReactionUpdated);
     };
   }, []);
 
@@ -906,6 +1130,8 @@ export default function EmptyWorkspace() {
         channel={selectedChannel}
         messages={messages}
         currentUserId={currentUserId}
+        typingUsers={typingUsers}
+        onToggleReaction={handleToggleReaction}
       />
     );
   }
@@ -941,10 +1167,7 @@ export default function EmptyWorkspace() {
             <Composer
               channelName={selectedChannel.name}
               value={messageDraft}
-              onChange={(value) => {
-                setMessageDraft(value);
-                if (sendError) setSendError("");
-              }}
+              onChange={handleMessageChange}
               onSend={handleSendMessage}
             />
           </>
@@ -954,6 +1177,7 @@ export default function EmptyWorkspace() {
       {isSettingsOpen && (
         <SettingsPanel
           channels={channels}
+          currentUserId={currentUserId}
           onClose={() => setIsSettingsOpen(false)}
           onDeleteChannel={handleDeleteChannel}
         />
