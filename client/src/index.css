@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --color-cream: #faf7fa;
+  --color-plum: #3d0e38;
   --color-huddle-purple: #4F46E5;
   --color-huddle-purple-hover: #4338CA;
   --color-huddle-light: #F9FAFB;
