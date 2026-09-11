@@ -1,4 +1,12 @@
-import { Body, Controller, Headers, Param, Post, Get } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Headers,
+  Param,
+  Post,
+  Get,
+} from "@nestjs/common";
 
 import { ChannelsService } from "./channels.service";
 
@@ -31,5 +39,27 @@ export class ChannelsController {
     const accessToken = authorization?.replace("Bearer ", "");
 
     return this.channelsService.joinChannel(channelId, accessToken);
+  }
+
+  @Post(":channelId/invite")
+  async inviteUser(
+    @Param("channelId") channelId: string,
+    @Body("email") email: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken = authorization?.replace(/^Bearer\s+/i, '');
+
+    return this.channelsService.inviteUser(channelId, email, accessToken);
+  }
+
+
+  @Delete(":channelId")
+  async deleteChannel(
+    @Param("channelId") channelId: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken = authorization?.replace(/^Bearer\s+/i, "");
+
+    return this.channelsService.deleteChannel(channelId, accessToken);
   }
 }
