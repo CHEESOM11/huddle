@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "../config/supabaseAdmin";
+import * as crypto from "crypto";
 
 @Injectable()
 export class ChannelsService {
@@ -255,15 +255,10 @@ export class ChannelsService {
 
   async inviteUser(
   channelId: string,
-  email: string,
   accessToken: string,
 ) {
   if (!channelId) {
     throw new BadRequestException('Channel ID is required.');
-  }
-
-  if (!email || !email.trim()) {
-    throw new BadRequestException('Email is required.');
   }
 
   if (!accessToken) {
@@ -321,64 +316,28 @@ export class ChannelsService {
     );
   }
 
-  // Find the person being invited
-  const {
-    data: { users },
-    error: listError,
-  } = await supabaseAdmin.auth.admin.listUsers();
+  //Generate a unique invite code
+  const code = `${crypto.randomUUID().replace(/-/g, '').slice(0,  12)}`;
 
-  if (listError) {
-    throw new BadRequestException(listError.message);
-  }
-
-  const invitee = users.find(
-    (u) =>
-      u.email?.toLowerCase() ===
-      email.trim().toLowerCase(),
-  );
-
-  if (!invitee) {
-    throw new NotFoundException(
-      'No user found with that email.',
-    );
-  }
-
-  // Check whether the user is already a member
-  const {
-    data: existing,
-    error: existingError,
-  } = await supabaseAdmin
-    .from('channel_members')
-    .select('channel_id, user_id')
-    .eq('channel_id', channelId)
-    .eq('user_id', invitee.id)
-    .maybeSingle();
-
-  if (existingError) {
-    throw new BadRequestException(existingError.message);
-  }
-
-  if (existing) {
-    throw new ConflictException(
-      'User is already a member of this channel.',
-    );
-  }
-
-  // Add the invited user to the channel
-  const { error: insertError } = await supabaseAdmin
-    .from('channel_members')
+  //Save the invite 
+  const { data: invite, error: inviteError } = await supabase
+    .from('invites')
     .insert({
       channel_id: channelId,
-      user_id: invitee.id,
-    });
+      code: code,
+      created_by: user.id,
+    })
+    .select('id, channel_id, code, created_by, created_at')
+    .single();
 
-  if (insertError) {
-    throw new BadRequestException(insertError.message);
+  if (inviteError || !invite) {
+    throw new BadRequestException(inviteError?.message ?? 'Failed to create invite.');
   }
 
   return {
-    message: 'User invited successfully.',
-    channel,
+    message: 'Invite created successfully.',
+    code: invite.code,
   };
+
 }
 }

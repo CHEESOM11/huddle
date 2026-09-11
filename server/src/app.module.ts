@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./auth/auth.module";
 import { ChannelsModule } from "./channels/channels.module";
 import { MessagesModule } from "./messages/messages.module";
+import { InvitesModule } from "./invites/invites.module";
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { MessagesModule } from "./messages/messages.module";
      AuthModule,
      ChannelsModule,
      MessagesModule,
+     InvitesModule,
     ],
   controllers: [],
   providers: [],
