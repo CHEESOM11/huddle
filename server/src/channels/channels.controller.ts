@@ -4,6 +4,7 @@ import {
   Delete,
   Headers,
   Param,
+  Patch,
   Post,
   Get,
   Query,
@@ -85,6 +86,40 @@ export class ChannelsController {
 
     return this.channelsService.inviteUser(
       channelId,
+      accessToken,
+    );
+  }
+
+  @Patch(":channelId")
+  async updateChannel(
+    @Param("channelId") channelId: string,
+    @Body("name") name: string,
+    @Body("topic") topic: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
+
+    return this.channelsService.updateChannel(
+      channelId,
+      name,
+      topic,
+      accessToken,
+    );
+  }
+
+  @Delete(":channelId/members/:userId")
+  async removeChannelMember(
+    @Param("channelId") channelId: string,
+    @Param("userId") userId: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, "");
+
+    return this.channelsService.removeChannelMember(
+      channelId,
+      userId,
       accessToken,
     );
   }

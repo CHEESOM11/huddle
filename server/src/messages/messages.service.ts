@@ -11,7 +11,7 @@ import {
   SupabaseClient,
 } from '@supabase/supabase-js';
 
-import { getUserDisplayNames } from '../config/supabaseAdmin';
+import { getProfileNames } from '../config/profiles';
 
 @Injectable()
 export class MessagesService {
@@ -128,6 +128,31 @@ export class MessagesService {
     return data;
   }
 
+  // Lightweight existence check: is `messageId` a message in `channelId`?
+  // Used by the reaction gateway so it doesn't have to load every message
+  // (and its reactions + sender names) just to validate a single id.
+  async messageBelongsToChannel(
+    channelId: string,
+    messageId: string,
+    accessToken: string,
+  ): Promise<boolean> {
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const { data, error } = await authenticatedSupabase
+      .from('messages')
+      .select('id')
+      .eq('id', messageId)
+      .eq('channel_id', channelId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return Boolean(data);
+  }
+
   async sendMessage(
     channelId: string,
     content: string,
@@ -136,6 +161,7 @@ export class MessagesService {
     fileName?: string,
     fileType?: string,
     fileSize?: number,
+    sender?: { userId: string; name: string | null },
   ) {
     if (!content?.trim() && !filePath) {
       throw new BadRequestException(
@@ -143,14 +169,16 @@ export class MessagesService {
       );
     }
 
-    const user =
-      await this.getAuthenticatedUser(accessToken);
+    // The socket gateway already authenticated the caller on connect, so it
+    // passes `sender` in to skip a redundant `auth.getUser` round trip. The
+    // REST path authenticates normally.
+    const user = sender
+      ? { id: sender.userId }
+      : await this.getAuthenticatedUser(accessToken);
 
-    await this.verifyChannelExists(
-      channelId,
-      accessToken,
-    );
-
+    // Membership implies the channel exists (channel_members.channel_id is a
+    // foreign key), so this single check replaces the old
+    // verifyChannelExists + verifyChannelMembership pair and saves a round trip.
     await this.verifyChannelMembership(
       channelId,
       user.id,
@@ -165,14 +193,17 @@ export class MessagesService {
       .insert({
         channel_id: channelId,
         user_id: user.id,
-        content: content?.trim() || null,
+        // `content` is NOT NULL in the DB, so a file-only message (no text)
+        // must store an empty string rather than NULL or the insert is
+        // rejected with "null value in column content".
+        content: content?.trim() || "",
         file_path: filePath || null,
         file_name: fileName || null,
         file_type: fileType || null,
         file_size: fileSize || null,
       })
       .select(
-        'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
+        'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at, parent_id',
       )
       .single();
 
@@ -182,7 +213,8 @@ export class MessagesService {
 
     return {
       ...data,
-      sender_name: this.getNameFromUser(user),
+      sender_name:
+        sender?.name ?? this.getNameFromUser(user),
     };
   }
 
@@ -217,7 +249,7 @@ export class MessagesService {
       await authenticatedSupabase
         .from('messages')
         .select(
-          'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
+          'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at, parent_id',
         )
         .eq('channel_id', channelId)
         .order('created_at', {
@@ -247,7 +279,8 @@ export class MessagesService {
       }),
     );
 
-    const senderNames = await getUserDisplayNames(
+    const senderNames = await getProfileNames(
+      authenticatedSupabase,
       enriched.map((message) => message.user_id),
     );
 
@@ -299,7 +332,7 @@ export class MessagesService {
     } = await authenticatedSupabase
       .from('messages')
       .select(
-        'id, channel_id, user_id, content, created_at',
+        'id, channel_id, user_id, content, created_at, parent_id',
       )
       .eq('id', messageId)
       .eq('channel_id', channelId)
@@ -335,7 +368,7 @@ export class MessagesService {
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
       .select(
-        'id, channel_id, user_id, content, created_at',
+        'id, channel_id, user_id, content, created_at, parent_id',
       )
       .single();
 
@@ -558,5 +591,187 @@ export class MessagesService {
         insertError.message,
       );
     }
+  }
+
+  async getReplies(
+    messageId: string,
+    accessToken: string,
+  ) {
+    if (!messageId) {
+      throw new BadRequestException(
+        'Message ID is required.',
+      );
+    }
+
+    const user =
+      await this.getAuthenticatedUser(accessToken);
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: parentMessage,
+      error: parentError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select('id, channel_id')
+        .eq('id', messageId)
+        .maybeSingle();
+
+    if (parentError) {
+      throw new BadRequestException(
+        parentError.message,
+      );
+    }
+
+    if (!parentMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    await this.verifyChannelMembership(
+      parentMessage.channel_id,
+      user.id,
+      accessToken,
+    );
+
+    const {
+      data: replies,
+      error: repliesError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select(
+          'id, channel_id, user_id, content, created_at, parent_id',
+        )
+        .eq('parent_id', messageId)
+        .order('created_at', {
+          ascending: true,
+        });
+
+    if (repliesError) {
+      throw new BadRequestException(
+        repliesError.message,
+      );
+    }
+
+    const replyIds =
+      (replies ?? []).map(
+        (reply) => reply.id,
+      );
+
+    const reactionsMap =
+      await this.getReactions(
+        replyIds,
+        accessToken,
+      );
+
+    const senderNames =
+      await getProfileNames(
+        authenticatedSupabase,
+        (replies ?? []).map(
+          (reply) => reply.user_id,
+        ),
+      );
+
+    return (replies ?? []).map(
+      (reply) => ({
+        ...reply,
+        reactions:
+          reactionsMap.get(reply.id) ?? [],
+        sender_name:
+          senderNames.get(reply.user_id) ?? null,
+      }),
+    );
+  }
+
+  async createReply(
+    messageId: string,
+    content: string,
+    accessToken: string,
+    sender?: { userId: string; name: string | null },
+  ) {
+    if (!messageId) {
+      throw new BadRequestException(
+        'Message ID is required.',
+      );
+    }
+
+    if (!content?.trim()) {
+      throw new BadRequestException(
+        'Reply content cannot be empty.',
+      );
+    }
+
+    // The socket gateway already authenticated the caller on connect, so it
+    // passes `sender` in to skip a redundant `auth.getUser` round trip.
+    const user = sender
+      ? { id: sender.userId }
+      : await this.getAuthenticatedUser(accessToken);
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: parentMessage,
+      error: parentError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select('id, channel_id')
+        .eq('id', messageId)
+        .maybeSingle();
+
+    if (parentError) {
+      throw new BadRequestException(
+        parentError.message,
+      );
+    }
+
+    if (!parentMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    await this.verifyChannelMembership(
+      parentMessage.channel_id,
+      user.id,
+      accessToken,
+    );
+
+    const {
+      data: reply,
+      error: replyError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .insert({
+          channel_id:
+            parentMessage.channel_id,
+          user_id: user.id,
+          content: content.trim(),
+          parent_id: messageId,
+        })
+        .select(
+          'id, channel_id, user_id, content, created_at, parent_id',
+        )
+        .single();
+
+    if (replyError || !reply) {
+      throw new BadRequestException(
+        replyError?.message ??
+          'Failed to create reply.',
+      );
+    }
+
+    return {
+      ...reply,
+      reactions: [],
+      sender_name:
+        sender?.name ?? this.getNameFromUser(user),
+    };
   }
 }
