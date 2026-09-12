@@ -1446,6 +1446,7 @@ export default function EmptyWorkspace() {
   const [currentUserName, setCurrentUserName] = useState("");
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [sendError, setSendError] = useState("");
+  const [toast, setToast] = useState("");
   const [typingUsers, setTypingUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
@@ -1461,6 +1462,7 @@ export default function EmptyWorkspace() {
   const typingAtRef = useRef(0);
   const typingTimerRef = useRef(null);
   const typingTimeoutsRef = useRef({});
+  const toastTimerRef = useRef(null);
 
   const handleSelectChannel = useCallback((channelId) => {
     if (!channelId || channelId === currentChannelRef.current) return;
@@ -1730,10 +1732,47 @@ export default function EmptyWorkspace() {
   useEffect(() => {
     const socket = getSocket();
 
+    let didAuthenticate = false;
+
     const handleAuthenticated = ({ userId, name }) => {
       currentUserIdRef.current = userId;
       setCurrentUserId(userId);
       if (name) setCurrentUserName(name);
+
+      // Socket.IO clears room membership when a connection drops, so re-join
+      // the active channel/DM after every (re)connect. Without this, incoming
+      // messages stop arriving after a reconnect until the page is reloaded —
+      // the "I have to refresh to see new messages" bug.
+      const channelId = currentChannelRef.current;
+      const conversationId = currentConversationRef.current;
+      if (channelId) {
+        socket.emit("join_channel", { channelId });
+      } else if (conversationId) {
+        socket.emit("join_dm", { conversationId });
+      }
+
+      // On a reconnect (not the first auth), refetch the open channel/DM so
+      // messages sent while we were briefly disconnected aren't missed.
+      if (didAuthenticate) {
+        if (channelId) {
+          fetchMessages(channelId)
+            .then((list) =>
+              setMessages(
+                (list ?? []).map((m) => ({
+                  ...m,
+                  reactions: m.reactions ?? [],
+                }))
+              )
+            )
+            .catch(() => {});
+        } else if (conversationId) {
+          fetchDirectMessages(conversationId)
+            .then((list) => setDirectMessages(list ?? []))
+            .catch(() => {});
+        }
+      }
+
+      didAuthenticate = true;
     };
     const handleNewMessage = (message) => {
       if (message?.channel_id !== currentChannelRef.current) return;
@@ -1746,6 +1785,24 @@ export default function EmptyWorkspace() {
       fetchChannels()
         .then((data) => setChannels(data))
         .catch(() => {});
+    };
+    const handleMemberJoined = ({ channelId, user }) => {
+      const name = user?.name ?? "Someone";
+      setToast(`${name} joined the channel`);
+
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      toastTimerRef.current = setTimeout(() => setToast(""), 4000);
+
+      if (channelId && channelId === currentChannelRef.current) {
+        getChannelMembers(channelId)
+          .then(({ members, memberCount }) => {
+            setMembers(members ?? []);
+            setMemberCount(memberCount ?? 0);
+          })
+          .catch(() => {});
+      }
     };
     const handleUserTyping = ({ userId, name }) => {
       if (!userId || userId === currentUserIdRef.current) return;
@@ -1826,6 +1883,7 @@ export default function EmptyWorkspace() {
     socket.on("new_dm", handleNewDm);
     socket.on("reply_created", handleReplyCreated);
     socket.on("added_to_channel", handleAddedToChannel);
+    socket.on("member_joined", handleMemberJoined);
     socket.on("user_typing", handleUserTyping);
     socket.on("user_stopped_typing", handleUserStoppedTyping);
     socket.on("reaction_updated", handleReactionUpdated);
@@ -1839,6 +1897,7 @@ export default function EmptyWorkspace() {
       socket.off("new_dm", handleNewDm);
       socket.off("reply_created", handleReplyCreated);
       socket.off("added_to_channel", handleAddedToChannel);
+      socket.off("member_joined", handleMemberJoined);
       socket.off("user_typing", handleUserTyping);
       socket.off("user_stopped_typing", handleUserStoppedTyping);
       socket.off("reaction_updated", handleReactionUpdated);
@@ -2069,6 +2128,12 @@ export default function EmptyWorkspace() {
             </button>
           </div>
         </header>
+
+        {toast && (
+          <div className="mx-6 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-plum/20 bg-plum/5 px-3 py-2 text-sm text-plum">
+            <span className="min-w-0 flex-1">{toast}</span>
+          </div>
+        )}
 
         {sendError && (
           <div className="mx-6 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
