@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearToken } from "../utils/storage";
 import {
@@ -9,7 +9,7 @@ import {
   uploadChannelFile,
   getChannelFileUrl,
 } from "../api/channels";
-import { createInvite } from "../api/invites";
+import { createInvite, acceptInvite } from "../api/invites";
 import { fetchMessages } from "../api/messages";
 import { getCurrentSession } from "../api/auth";
 import { getSocket } from "../lib/socket";
@@ -68,6 +68,25 @@ function formatTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// Pull the invite code out of whatever the user pasted — a full link
+// ("http://localhost:5173/join/abc123"), a path ("/join/abc123"), or a bare code.
+function extractInviteCode(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last) return last;
+  } catch {
+    // Not an absolute URL — fall through to the path-segment split.
+  }
+
+  const segments = value.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? "";
 }
 
 function Avatar({ name, id, size = "md" }) {
@@ -148,7 +167,7 @@ function FileAttachment({ channelId, message }) {
   );
 }
 
-function MessageRow({
+const MessageRow = memo(function MessageRow({
   message,
   channelId,
   own,
@@ -158,6 +177,7 @@ function MessageRow({
   onDeleteMessage,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerUp, setPickerUp] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content ?? "");
   const reactions = message.reactions ?? [];
@@ -172,6 +192,14 @@ function MessageRow({
     }
     onEditMessage(message.id, content);
     setEditing(false);
+  };
+
+  const openPicker = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    // The picker needs ~48px above the button, but the top nav bar is 60px
+    // tall. Near the top there's no room to open upward, so drop it below.
+    setPickerUp(rect.top > 108);
+    setPickerOpen((v) => !v);
   };
 
   return (
@@ -256,7 +284,7 @@ function MessageRow({
         <button
           type="button"
           aria-label="Add reaction"
-          onClick={() => setPickerOpen((v) => !v)}
+          onClick={openPicker}
           className="flex h-7 w-7 items-center justify-center rounded-full text-plum/40 transition hover:bg-black/5 hover:text-plum"
         >
           <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
@@ -287,7 +315,7 @@ function MessageRow({
       </div>
 
       {pickerOpen && (
-        <div className="absolute right-8 top-0 z-20 flex -translate-y-12 gap-1 rounded-full border border-black/10 bg-white p-1 shadow-lg">
+        <div className={`absolute right-8 z-20 flex gap-1 rounded-full border border-black/10 bg-white p-1 shadow-lg ${pickerUp ? "top-0 -translate-y-12" : "top-7"}`}>
           {REACTION_EMOJIS.map((emoji) => (
             <button
               key={emoji}
@@ -305,7 +333,7 @@ function MessageRow({
       )}
     </div>
   );
-}
+});
 
 function MessageList({
   messages,
@@ -367,14 +395,33 @@ function TypingIndicator({ users }) {
   );
 }
 
-function MessageComposer({ channelName, value, onChange, onSend, onAttachFile }) {
+function MessageComposer({ channelName, onChange, onSend, onAttachFile }) {
   const fileInputRef = useRef(null);
+  const [draft, setDraft] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
+
+  const handleChange = (value) => {
+    setDraft(value);
+    if (onChange) onChange(value);
+  };
+
+  const handleSend = () => {
+    const content = draft.trim();
+    if (!content) return;
+
+    setDraft("");
+    const result = onSend(content);
+    if (result && typeof result.then === "function") {
+      result.then((ok) => {
+        if (ok === false) setDraft(content);
+      });
+    }
+  };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      onSend();
+      handleSend();
     }
   };
 
@@ -403,8 +450,8 @@ function MessageComposer({ channelName, value, onChange, onSend, onAttachFile })
         />
         <input
           type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={draft}
+          onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={channelName ? `Message #${channelName}` : "Message"}
           className="flex-1 bg-transparent text-sm text-plum outline-none placeholder:text-plum/40"
@@ -419,8 +466,8 @@ function MessageComposer({ channelName, value, onChange, onSend, onAttachFile })
         </button>
         <button
           type="button"
-          onClick={onSend}
-          disabled={!value.trim()}
+          onClick={handleSend}
+          disabled={!draft.trim()}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-plum text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FontAwesomeIcon icon={faPaperPlane} className="h-4 w-4" />
@@ -434,7 +481,7 @@ function MessageComposer({ channelName, value, onChange, onSend, onAttachFile })
               key={emoji}
               type="button"
               onClick={() => {
-                onChange(value + emoji);
+                handleChange(draft + emoji);
                 setEmojiOpen(false);
               }}
               className="flex h-8 w-8 items-center justify-center rounded-full text-base transition hover:bg-black/5"
@@ -598,14 +645,40 @@ function Sidebar({
   isCreatingChannel,
   onToggleCreate,
   onCreateChannel,
+  onJoinChannel,
+  currentUserId,
+  currentUserName,
+  currentUserEmail,
 }) {
   const [name, setName] = useState("");
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [joinValue, setJoinValue] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joinBusy, setJoinBusy] = useState(false);
 
   const submit = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
     onCreateChannel(trimmed);
     setName("");
+  };
+
+  const submitJoin = async () => {
+    const code = extractInviteCode(joinValue);
+    if (!code) {
+      setJoinError("Enter an invite link.");
+      return;
+    }
+    setJoinBusy(true);
+    setJoinError("");
+    const result = await onJoinChannel(code);
+    setJoinBusy(false);
+    if (result?.ok) {
+      setJoinValue("");
+      setJoinOpen(false);
+    } else {
+      setJoinError(result?.message || "Couldn't join channel.");
+    }
   };
 
   return (
@@ -622,14 +695,28 @@ function Sidebar({
           <span className="text-[10px] font-semibold tracking-wide text-white/50">
             CHANNELS
           </span>
-          <button
-            type="button"
-            aria-label="Create channel"
-            onClick={onToggleCreate}
-            className="flex h-5 w-5 items-center justify-center rounded text-white/50 transition hover:bg-white/10 hover:text-white"
-          >
-            <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-label="Join channel by link"
+              title="Join channel by link"
+              onClick={() => {
+                setJoinOpen((v) => !v);
+                setJoinError("");
+              }}
+              className="flex h-5 w-5 items-center justify-center rounded text-white/50 transition hover:bg-white/10 hover:text-white"
+            >
+              <FontAwesomeIcon icon={faLink} className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              aria-label="Create channel"
+              onClick={onToggleCreate}
+              className="flex h-5 w-5 items-center justify-center rounded text-white/50 transition hover:bg-white/10 hover:text-white"
+            >
+              <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
+            </button>
+          </div>
         </div>
 
         {isCreatingChannel && (
@@ -660,6 +747,38 @@ function Sidebar({
           </div>
         )}
 
+        {joinOpen && (
+          <div className="mt-1 flex items-center gap-1 px-1">
+            <input
+              type="text"
+              value={joinValue}
+              onChange={(e) => setJoinValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitJoin();
+                if (e.key === "Escape") {
+                  setJoinValue("");
+                  setJoinOpen(false);
+                  setJoinError("");
+                }
+              }}
+              autoFocus
+              placeholder="Paste invite link"
+              className="w-full rounded bg-white/10 px-2 py-1 text-xs text-white outline-none placeholder:text-white/40"
+            />
+            <button
+              type="button"
+              onClick={submitJoin}
+              disabled={!joinValue.trim() || joinBusy}
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-lime text-plum transition hover:opacity-90 disabled:opacity-40"
+            >
+              <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        )}
+        {joinError && (
+          <p className="mt-1 px-2 text-xs text-red-300">{joinError}</p>
+        )}
+
         <ul className="mt-1 space-y-0.5">
           {channels.map((channel) => (
             <li key={channel.id}>
@@ -683,6 +802,20 @@ function Sidebar({
           )}
         </ul>
       </div>
+
+      <div className="shrink-0 border-t border-white/10 px-2 py-3">
+        <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-white/5">
+          <Avatar name={currentUserName || "You"} id={currentUserId} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">
+              {currentUserName || "You"}
+            </p>
+            {currentUserEmail ? (
+              <p className="truncate text-xs text-white/50">{currentUserEmail}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }
@@ -701,7 +834,8 @@ export default function EmptyWorkspace() {
   const [members, setMembers] = useState([]);
   const [memberCount, setMemberCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [messageDraft, setMessageDraft] = useState("");
+  const [currentUserName, setCurrentUserName] = useState("");
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [sendError, setSendError] = useState("");
   const [typingUsers, setTypingUsers] = useState([]);
   const currentChannelRef = useRef(null);
@@ -770,7 +904,6 @@ export default function EmptyWorkspace() {
   };
 
   const handleMessageChange = (value) => {
-    setMessageDraft(value);
     if (sendError) setSendError("");
     if (value.trim()) {
       const now = Date.now();
@@ -785,7 +918,7 @@ export default function EmptyWorkspace() {
     }
   };
 
-  const handleToggleReaction = (messageId, emoji) => {
+  const handleToggleReaction = useCallback((messageId, emoji) => {
     const channelId = currentChannelRef.current;
     if (!channelId || !messageId || !emoji) return;
     getSocket().emit("toggle_reaction", { channelId, messageId, emoji }, (ack) => {
@@ -793,26 +926,28 @@ export default function EmptyWorkspace() {
         setSendError(ack.message || "Couldn't react.");
       }
     });
-  };
+  }, []);
 
-  const handleSendMessage = () => {
-    const content = messageDraft.trim();
+  const handleSendMessage = (content) => {
     const channelId = currentChannelRef.current;
-    if (!content || !channelId) return;
+    if (!content || !channelId) return Promise.resolve(true);
 
     setSendError("");
-    setMessageDraft("");
     stopTyping();
 
-    getSocket().emit("send_message", { channelId, content }, (ack) => {
-      if (ack?.event === "error") {
-        setMessageDraft(content);
-        setSendError(ack.message || "Failed to send message.");
-      }
+    return new Promise((resolve) => {
+      getSocket().emit("send_message", { channelId, content }, (ack) => {
+        if (ack?.event === "error") {
+          setSendError(ack.message || "Failed to send message.");
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
     });
   };
 
-  const handleEditMessage = (messageId, content) => {
+  const handleEditMessage = useCallback((messageId, content) => {
     const channelId = currentChannelRef.current;
     if (!channelId || !messageId || !content.trim()) return;
     getSocket().emit("edit_message", { channelId, messageId, content }, (ack) => {
@@ -820,9 +955,9 @@ export default function EmptyWorkspace() {
         setSendError(ack.message || "Couldn't edit message.");
       }
     });
-  };
+  }, []);
 
-  const handleDeleteMessage = (messageId) => {
+  const handleDeleteMessage = useCallback((messageId) => {
     const channelId = currentChannelRef.current;
     if (!channelId || !messageId) return;
     getSocket().emit("delete_message", { channelId, messageId }, (ack) => {
@@ -830,7 +965,7 @@ export default function EmptyWorkspace() {
         setSendError(ack.message || "Couldn't delete message.");
       }
     });
-  };
+  }, []);
 
   const handleSendFile = async (file) => {
     const channelId = currentChannelRef.current;
@@ -863,9 +998,10 @@ export default function EmptyWorkspace() {
   useEffect(() => {
     const socket = getSocket();
 
-    const handleAuthenticated = ({ userId }) => {
+    const handleAuthenticated = ({ userId, name }) => {
       currentUserIdRef.current = userId;
       setCurrentUserId(userId);
+      if (name) setCurrentUserName(name);
     };
     const handleNewMessage = (message) => {
       if (message?.channel_id !== currentChannelRef.current) return;
@@ -919,6 +1055,14 @@ export default function EmptyWorkspace() {
       if (channelId !== currentChannelRef.current) return;
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
     };
+    // The gateway emits an `error` event (not an ack) for failures — surface it.
+    const handleError = (payload) => {
+      const message =
+        typeof payload === "string"
+          ? payload
+          : payload?.message || "Something went wrong.";
+      setSendError(message);
+    };
 
     socket.on("authenticated", handleAuthenticated);
     socket.on("new_message", handleNewMessage);
@@ -928,6 +1072,7 @@ export default function EmptyWorkspace() {
     socket.on("reaction_updated", handleReactionUpdated);
     socket.on("message_edited", handleMessageEdited);
     socket.on("message_deleted", handleMessageDeleted);
+    socket.on("error", handleError);
 
     return () => {
       socket.off("authenticated", handleAuthenticated);
@@ -938,6 +1083,7 @@ export default function EmptyWorkspace() {
       socket.off("reaction_updated", handleReactionUpdated);
       socket.off("message_edited", handleMessageEdited);
       socket.off("message_deleted", handleMessageDeleted);
+      socket.off("error", handleError);
     };
   }, []);
 
@@ -945,17 +1091,23 @@ export default function EmptyWorkspace() {
     let cancelled = false;
 
     async function boot() {
-      try {
-        const { user } = await getCurrentSession();
-        if (!cancelled && user) {
-          currentUserIdRef.current = user.id;
-          setCurrentUserId(user.id);
-        }
-      } catch {
-        // Socket `authenticated` will set the id as a fallback.
-      }
+      // Run the session check and the channel fetch in parallel — they're
+      // independent, so awaiting them sequentially just doubles the wait.
+      const sessionPromise = getCurrentSession()
+        .then(({ user }) => {
+          if (!cancelled && user) {
+            currentUserIdRef.current = user.id;
+            setCurrentUserId(user.id);
+            const name = user?.user_metadata?.name ?? user?.email ?? "";
+            if (name) setCurrentUserName(name);
+            if (user?.email) setCurrentUserEmail(user.email);
+          }
+        })
+        .catch(() => {
+          // Socket `authenticated` will set the id as a fallback.
+        });
 
-      fetchChannels()
+      const channelsPromise = fetchChannels()
         .then((data) => {
           if (cancelled) return;
           setChannels(data);
@@ -967,6 +1119,8 @@ export default function EmptyWorkspace() {
           setErrorMessage(err.message);
           setStatus("error");
         });
+
+      await Promise.all([sessionPromise, channelsPromise]);
     }
 
     boot();
@@ -999,6 +1153,25 @@ export default function EmptyWorkspace() {
     setChannels((prev) => [...prev, channel]);
     setIsCreatingChannel(false);
     handleSelectChannel(channel.id);
+  };
+
+  const handleJoinChannel = async (code) => {
+    if (!code) return { ok: false, message: "Enter an invite link." };
+    try {
+      const { channel } = await acceptInvite(code);
+      const list = await fetchChannels();
+      setChannels(list);
+      if (channel?.id) handleSelectChannel(channel.id);
+      return { ok: true };
+    } catch (err) {
+      if (err?.status === 409) {
+        // Already a member — refresh so the channel shows, and treat as success.
+        const list = await fetchChannels();
+        setChannels(list);
+        return { ok: true };
+      }
+      return { ok: false, message: err.message || "Couldn't join channel." };
+    }
   };
 
   const handleDeleteChannel = async (channelId) => {
@@ -1042,6 +1215,10 @@ export default function EmptyWorkspace() {
         isCreatingChannel={isCreatingChannel}
         onToggleCreate={handleToggleCreate}
         onCreateChannel={handleCreateChannel}
+        onJoinChannel={handleJoinChannel}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
+        currentUserEmail={currentUserEmail}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -1091,7 +1268,17 @@ export default function EmptyWorkspace() {
         {selectedChannel ? (
           <>
             {sendError && (
-              <p className="shrink-0 px-6 pt-2 text-xs text-red-500">{sendError}</p>
+              <div className="mx-6 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                <span className="min-w-0 flex-1">{sendError}</span>
+                <button
+                  type="button"
+                  onClick={() => setSendError("")}
+                  aria-label="Dismiss error"
+                  className="shrink-0 text-red-400 transition hover:text-red-600"
+                >
+                  <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
+                </button>
+              </div>
             )}
             <MessageList
               messages={messages}
@@ -1104,7 +1291,6 @@ export default function EmptyWorkspace() {
             <TypingIndicator users={typingUsers} />
             <MessageComposer
               channelName={selectedChannel.name}
-              value={messageDraft}
               onChange={handleMessageChange}
               onSend={handleSendMessage}
               onAttachFile={handleSendFile}
