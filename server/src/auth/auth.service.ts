@@ -22,6 +22,12 @@ export class AuthService {
       );
     }
 
+    // Where the user lands after clicking the confirmation link. Must be the
+    // /confirm-email route on the frontend, which reads the access_token from
+    // the URL hash and logs the user straight in. Without this, Supabase
+    // redirects to the Site URL (site root), which drops the token.
+    const emailRedirectTo = process.env.SIGNUP_CONFIRM_REDIRECT_URL;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -29,6 +35,7 @@ export class AuthService {
         data: {
           name,
         },
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
       },
     });
 
