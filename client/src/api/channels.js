@@ -1,4 +1,4 @@
-import { request } from './client'
+import { request, uploadFile } from './client'
 import { getToken } from '../utils/storage'
 
 // The backend nests channel data in the list response: each row is
@@ -36,11 +36,40 @@ export async function deleteChannel(channelId) {
   await request(`/api/channels/${channelId}`, { method: 'DELETE', token })
 }
 
-export async function inviteUser(channelId, email) {
+// Fetch the member list + count for a channel's header (people badge).
+export async function getChannelMembers(channelId) {
   const token = getToken()
-  await request(`/api/channels/${channelId}/invite`, {
-    method: 'POST',
+  const data = await request(`/api/channels/${channelId}/members`, {
+    method: 'GET',
     token,
-    body: { email },
   })
+
+  return {
+    memberCount: data?.memberCount ?? 0,
+    members: data?.members ?? [],
+  }
+}
+
+// Upload a file to the channel's storage bucket; returns the file metadata
+// needed to attach it to a message via POST /channels/:id/messages.
+export async function uploadChannelFile(channelId, file) {
+  const token = getToken()
+  return uploadFile(`/api/channels/${channelId}/upload`, file, { token })
+}
+
+// Directly join a channel by id (no invite code). Mirrors POST /channels/:id/join.
+export async function joinChannel(channelId) {
+  const token = getToken()
+  return request(`/api/channels/${channelId}/join`, { method: 'POST', token })
+}
+
+// Resolve a stored file path into a short-lived, signed download URL.
+export async function getChannelFileUrl(channelId, path) {
+  const token = getToken()
+  const data = await request(
+    `/api/channels/${channelId}/file?path=${encodeURIComponent(path)}`,
+    { method: 'GET', token },
+  )
+
+  return data?.url ?? null
 }

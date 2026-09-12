@@ -86,4 +86,67 @@ export class StorageService {
       file_size: file.size,
     };
   }
+
+  // Generate a short-lived, signed download URL for a file that was already
+  // uploaded to the channel's bucket. Verifies the caller is a member of the
+  // channel and that the path is scoped to that channel before signing.
+  async getSignedUrl(
+    filePath: string,
+    channelId: string,
+    accessToken: string,
+  ) {
+    if (!filePath) {
+      throw new BadRequestException("File path is required.");
+    }
+    if (!channelId) {
+      throw new BadRequestException("Channel ID is required.");
+    }
+    if (!accessToken) {
+      throw new UnauthorizedException("Authorization token is required.");
+    }
+
+    // Defend against path traversal / cross-channel access: the stored path
+    // always begins with `${channelId}/`, so require that prefix.
+    if (!filePath.startsWith(`${channelId}/`)) {
+      throw new BadRequestException("Invalid file path.");
+    }
+
+    const supabase = this.getAuthenticatedClient(accessToken);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+    if (userError || !user) {
+      throw new UnauthorizedException(
+        "Invalid or expired authorization token.",
+      );
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("channel_members")
+      .select("channel_id")
+      .eq("channel_id", channelId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (membershipError) {
+      throw new BadRequestException(membershipError.message);
+    }
+    if (!membership) {
+      throw new UnauthorizedException("You are not a member of this channel.");
+    }
+
+    const { data, error } = await supabase.storage
+      .from("huddle-files")
+      .createSignedUrl(filePath, 3600);
+    if (error || !data?.signedUrl) {
+      throw new BadRequestException(
+        error?.message ?? "Unable to generate download link.",
+      );
+    }
+
+    return {
+      url: data.signedUrl,
+      path: filePath,
+    };
+  }
 }

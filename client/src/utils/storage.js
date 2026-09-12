@@ -20,3 +20,17 @@ export function hasSeenOnboarding() {
 export function setOnboardingSeen() {
   localStorage.setItem(ONBOARDING_KEY, '1')
 }
+
+const PENDING_INVITE_KEY = 'huddle_pending_invite'
+
+export function getPendingInvite() {
+  return localStorage.getItem(PENDING_INVITE_KEY)
+}
+
+export function setPendingInvite(code) {
+  localStorage.setItem(PENDING_INVITE_KEY, code)
+}
+
+export function clearPendingInvite() {
+  localStorage.removeItem(PENDING_INVITE_KEY)
+}
