@@ -1,73 +1,3 @@
-// import {
-//   Body,
-//   Controller,
-//   Get,
-//   Headers,
-//   Param,
-//   Post,
-// } from '@nestjs/common';
-
-// import { MessagesService } from './messages.service';
-
-// @Controller('channels')
-// export class MessagesController {
-//   constructor(
-//     private readonly messagesService: MessagesService,
-//   ) {}
-
-//   @Post(':channelId/messages')
-//   async sendMessage(
-//     @Param('channelId') channelId: string,
-//     @Body('content') content: string,
-//     @Headers('authorization') authorization: string,
-//   ) {
-//     const accessToken =
-//       authorization?.replace(
-//         /^Bearer\s+/i,
-//         '',
-//       );
-
-//     const message =
-//       await this.messagesService.sendMessage(
-//         channelId,
-//         content,
-//         accessToken,
-//       );
-
-//     return {
-//       message: 'Message sent successfully.',
-//       data: {
-//         ...message,
-//         reactions: [],
-//       },
-//     };
-//   }
-
-//   @Get(':channelId/messages')
-//   async getMessages(
-//     @Param('channelId') channelId: string,
-//     @Headers('authorization') authorization: string,
-//   ) {
-//     const accessToken =
-//       authorization?.replace(
-//         /^Bearer\s+/i,
-//         '',
-//       );
-
-//     const messages =
-//       await this.messagesService.getMessages(
-//         channelId,
-//         accessToken,
-//       );
-
-//     return {
-//       message: 'Messages retrieved successfully.',
-//       data: messages,
-//     };
-//   }
-// }
-
-
 import {
   Body,
   Controller,
@@ -81,13 +11,13 @@ import {
 
 import { MessagesService } from './messages.service';
 
-@Controller('channels')
+@Controller()
 export class MessagesController {
   constructor(
     private readonly messagesService: MessagesService,
   ) {}
 
-  @Post(':channelId/messages')
+  @Post('channels/:channelId/messages')
   async sendMessage(
     @Param('channelId') channelId: string,
     @Body('content') content: string,
@@ -112,7 +42,7 @@ export class MessagesController {
     };
   }
 
-  @Get(':channelId/messages')
+  @Get('channels/:channelId/messages')
   async getMessages(
     @Param('channelId') channelId: string,
     @Headers('authorization') authorization: string,
@@ -132,7 +62,7 @@ export class MessagesController {
     };
   }
 
-  @Patch(':channelId/messages/:messageId')
+  @Patch('channels/:channelId/messages/:messageId')
   async editMessage(
     @Param('channelId') channelId: string,
     @Param('messageId') messageId: string,
@@ -159,7 +89,7 @@ export class MessagesController {
     };
   }
 
-  @Delete(':channelId/messages/:messageId')
+  @Delete('channels/:channelId/messages/:messageId')
   async deleteMessage(
     @Param('channelId') channelId: string,
     @Param('messageId') messageId: string,
@@ -173,5 +103,47 @@ export class MessagesController {
       messageId,
       accessToken,
     );
+  }
+
+  @Get('messages/:messageId/replies')
+  async getReplies(
+    @Param('messageId') messageId: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, '');
+
+    const replies =
+      await this.messagesService.getReplies(
+        messageId,
+        accessToken,
+      );
+
+    return {
+      message: 'Replies retrieved successfully.',
+      data: replies,
+    };
+  }
+
+  @Post('messages/:messageId/replies')
+  async createReply(
+    @Param('messageId') messageId: string,
+    @Body('content') content: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    const accessToken =
+      authorization?.replace(/^Bearer\s+/i, '');
+
+    const reply =
+      await this.messagesService.createReply(
+        messageId,
+        content,
+        accessToken,
+      );
+
+    return {
+      message: 'Reply created successfully.',
+      data: reply,
+    };
   }
 }

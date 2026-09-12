@@ -1,345 +1,3 @@
-// import {
-//   BadRequestException,
-//   Injectable,
-//   UnauthorizedException,
-// } from '@nestjs/common';
-
-// import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// @Injectable()
-// export class MessagesService {
-//   private getAuthenticatedClient(
-//     accessToken: string,
-//   ): SupabaseClient {
-//     if (!accessToken) {
-//       throw new UnauthorizedException(
-//         'Authentication token is required.',
-//       );
-//     }
-
-//     return createClient(
-//       process.env.SUPABASE_URL!,
-//       process.env.SUPABASE_PUBLISHABLE_KEY!,
-//       {
-//         global: {
-//           headers: {
-//             Authorization: `Bearer ${accessToken}`,
-//           },
-//         },
-//         auth: {
-//           autoRefreshToken: false,
-//           persistSession: false,
-//           detectSessionInUrl: false,
-//         },
-//       },
-//     );
-//   }
-
-//   private async getAuthenticatedUser(
-//     accessToken: string,
-//   ) {
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const {
-//       data: { user },
-//       error,
-//     } = await authenticatedSupabase.auth.getUser();
-
-//     if (error || !user) {
-//       throw new UnauthorizedException(
-//         'Invalid or expired authentication token.',
-//       );
-//     }
-
-//     return user;
-//   }
-
-//   private async verifyChannelExists(
-//     channelId: string,
-//     accessToken: string,
-//   ) {
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data, error } = await authenticatedSupabase
-//       .from('channels')
-//       .select('id')
-//       .eq('id', channelId)
-//       .maybeSingle();
-
-//     if (error) {
-//       throw new BadRequestException(error.message);
-//     }
-
-//     if (!data) {
-//       throw new BadRequestException(
-//         'Channel does not exist.',
-//       );
-//     }
-
-//     return data;
-//   }
-
-//   async verifyChannelMembership(
-//     channelId: string,
-//     userId: string,
-//     accessToken: string,
-//   ) {
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data, error } = await authenticatedSupabase
-//       .from('channel_members')
-//       .select('id')
-//       .eq('channel_id', channelId)
-//       .eq('user_id', userId)
-//       .maybeSingle();
-
-//     if (error) {
-//       throw new BadRequestException(error.message);
-//     }
-
-//     if (!data) {
-//       throw new UnauthorizedException(
-//         'You are not a member of this channel.',
-//       );
-//     }
-
-//     return data;
-//   }
-
-//   async sendMessage(
-//     channelId: string,
-//     content: string,
-//     accessToken: string,
-//   ) {
-//     if (!channelId || !content?.trim()) {
-//       throw new BadRequestException(
-//         'Channel ID and message content are required.',
-//       );
-//     }
-
-//     const user = await this.getAuthenticatedUser(
-//       accessToken,
-//     );
-
-//     await this.verifyChannelExists(
-//       channelId,
-//       accessToken,
-//     );
-
-//     await this.verifyChannelMembership(
-//       channelId,
-//       user.id,
-//       accessToken,
-//     );
-
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data, error } = await authenticatedSupabase
-//       .from('messages')
-//       .insert({
-//         channel_id: channelId,
-//         user_id: user.id,
-//         content: content.trim(),
-//       })
-//       .select(
-//         'id, channel_id, user_id, content, created_at',
-//       )
-//       .single();
-
-//     if (error) {
-//       throw new BadRequestException(error.message);
-//     }
-
-//     return data;
-//   }
-
-//   async getMessages(
-//     channelId: string,
-//     accessToken: string,
-//   ) {
-//     if (!channelId) {
-//       throw new BadRequestException(
-//         'Channel ID is required.',
-//       );
-//     }
-
-//     const user = await this.getAuthenticatedUser(
-//       accessToken,
-//     );
-
-//     await this.verifyChannelExists(
-//       channelId,
-//       accessToken,
-//     );
-
-//     await this.verifyChannelMembership(
-//       channelId,
-//       user.id,
-//       accessToken,
-//     );
-
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data: messages, error } =
-//       await authenticatedSupabase
-//         .from('messages')
-//         .select(
-//           'id, channel_id, user_id, content, created_at',
-//         )
-//         .eq('channel_id', channelId)
-//         .order('created_at', {
-//           ascending: true,
-//         });
-
-//     if (error) {
-//       throw new BadRequestException(error.message);
-//     }
-
-//     const messageIds = (messages ?? []).map(
-//       (message) => message.id,
-//     );
-
-//     const reactionsMap = await this.getReactions(
-//       messageIds,
-//       accessToken,
-//     );
-
-//     return (messages ?? []).map((message) => ({
-//       ...message,
-//       reactions:
-//         reactionsMap.get(message.id) ?? [],
-//     }));
-//   }
-
-//   async getReactions(
-//     messageIds: string[],
-//     accessToken: string,
-//   ) {
-//     const map = new Map<
-//       string,
-//       {
-//         emoji: string;
-//         count: number;
-//         users: string[];
-//       }[]
-//     >();
-
-//     if (messageIds.length === 0) {
-//       return map;
-//     }
-
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data, error } =
-//       await authenticatedSupabase
-//         .from('message_reactions')
-//         .select(
-//           'message_id, emoji, user_id',
-//         )
-//         .in('message_id', messageIds);
-
-//     if (error) {
-//       throw new BadRequestException(error.message);
-//     }
-
-//     for (const row of data ?? []) {
-//       const list =
-//         map.get(row.message_id) ?? [];
-
-//       let entry = list.find(
-//         (reaction) =>
-//           reaction.emoji === row.emoji,
-//       );
-
-//       if (!entry) {
-//         entry = {
-//           emoji: row.emoji,
-//           count: 0,
-//           users: [],
-//         };
-
-//         list.push(entry);
-//       }
-
-//       entry.count += 1;
-//       entry.users.push(row.user_id);
-
-//       map.set(row.message_id, list);
-//     }
-
-//     return map;
-//   }
-
-//   async toggleReaction(
-//     messageId: string,
-//     emoji: string,
-//     userId: string,
-//     accessToken: string,
-//   ) {
-//     if (!messageId || !emoji || !userId) {
-//       throw new BadRequestException(
-//         'Message ID, emoji, and user ID are required.',
-//       );
-//     }
-
-//     const authenticatedSupabase =
-//       this.getAuthenticatedClient(accessToken);
-
-//     const { data: existing, error: findError } =
-//       await authenticatedSupabase
-//         .from('message_reactions')
-//         .select('id')
-//         .eq('message_id', messageId)
-//         .eq('user_id', userId)
-//         .eq('emoji', emoji)
-//         .maybeSingle();
-
-//     if (findError) {
-//       throw new BadRequestException(
-//         findError.message,
-//       );
-//     }
-
-//     if (existing) {
-//       const { error: deleteError } =
-//         await authenticatedSupabase
-//           .from('message_reactions')
-//           .delete()
-//           .eq('id', existing.id);
-
-//       if (deleteError) {
-//         throw new BadRequestException(
-//           deleteError.message,
-//         );
-//       }
-
-//       return;
-//     }
-
-//     const { error: insertError } =
-//       await authenticatedSupabase
-//         .from('message_reactions')
-//         .insert({
-//           message_id: messageId,
-//           user_id: userId,
-//           emoji,
-//         });
-
-//     if (insertError) {
-//       throw new BadRequestException(
-//         insertError.message,
-//       );
-//     }
-//   }
-// }
-
-
 import {
   BadRequestException,
   ForbiddenException,
@@ -495,7 +153,7 @@ export class MessagesService {
           content: content.trim(),
         })
         .select(
-          'id, channel_id, user_id, content, created_at',
+          'id, channel_id, user_id, content, created_at, parent_id',
         )
         .single();
 
@@ -537,7 +195,7 @@ export class MessagesService {
       await authenticatedSupabase
         .from('messages')
         .select(
-          'id, channel_id, user_id, content, created_at',
+          'id, channel_id, user_id, content, created_at, parent_id',
         )
         .eq('channel_id', channelId)
         .order('created_at', {
@@ -609,7 +267,7 @@ export class MessagesService {
     } = await authenticatedSupabase
       .from('messages')
       .select(
-        'id, channel_id, user_id, content, created_at',
+        'id, channel_id, user_id, content, created_at, parent_id',
       )
       .eq('id', messageId)
       .eq('channel_id', channelId)
@@ -645,7 +303,7 @@ export class MessagesService {
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
       .select(
-        'id, channel_id, user_id, content, created_at',
+        'id, channel_id, user_id, content, created_at, parent_id',
       )
       .single();
 
@@ -865,5 +523,171 @@ export class MessagesService {
         insertError.message,
       );
     }
+  }
+
+  async getReplies(
+    messageId: string,
+    accessToken: string,
+  ) {
+    if (!messageId) {
+      throw new BadRequestException(
+        'Message ID is required.',
+      );
+    }
+
+    const user =
+      await this.getAuthenticatedUser(accessToken);
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: parentMessage,
+      error: parentError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select('id, channel_id')
+        .eq('id', messageId)
+        .maybeSingle();
+
+    if (parentError) {
+      throw new BadRequestException(
+        parentError.message,
+      );
+    }
+
+    if (!parentMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    await this.verifyChannelMembership(
+      parentMessage.channel_id,
+      user.id,
+      accessToken,
+    );
+
+    const {
+      data: replies,
+      error: repliesError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select(
+          'id, channel_id, user_id, content, created_at, parent_id',
+        )
+        .eq('parent_id', messageId)
+        .order('created_at', {
+          ascending: true,
+        });
+
+    if (repliesError) {
+      throw new BadRequestException(
+        repliesError.message,
+      );
+    }
+
+    const replyIds =
+      (replies ?? []).map(
+        (reply) => reply.id,
+      );
+
+    const reactionsMap =
+      await this.getReactions(
+        replyIds,
+        accessToken,
+      );
+
+    return (replies ?? []).map(
+      (reply) => ({
+        ...reply,
+        reactions:
+          reactionsMap.get(reply.id) ?? [],
+      }),
+    );
+  }
+
+  async createReply(
+    messageId: string,
+    content: string,
+    accessToken: string,
+  ) {
+    if (!messageId) {
+      throw new BadRequestException(
+        'Message ID is required.',
+      );
+    }
+
+    if (!content?.trim()) {
+      throw new BadRequestException(
+        'Reply content cannot be empty.',
+      );
+    }
+
+    const user =
+      await this.getAuthenticatedUser(accessToken);
+
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: parentMessage,
+      error: parentError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .select('id, channel_id')
+        .eq('id', messageId)
+        .maybeSingle();
+
+    if (parentError) {
+      throw new BadRequestException(
+        parentError.message,
+      );
+    }
+
+    if (!parentMessage) {
+      throw new NotFoundException(
+        'Message not found.',
+      );
+    }
+
+    await this.verifyChannelMembership(
+      parentMessage.channel_id,
+      user.id,
+      accessToken,
+    );
+
+    const {
+      data: reply,
+      error: replyError,
+    } =
+      await authenticatedSupabase
+        .from('messages')
+        .insert({
+          channel_id:
+            parentMessage.channel_id,
+          user_id: user.id,
+          content: content.trim(),
+          parent_id: messageId,
+        })
+        .select(
+          'id, channel_id, user_id, content, created_at, parent_id',
+        )
+        .single();
+
+    if (replyError || !reply) {
+      throw new BadRequestException(
+        replyError?.message ??
+          'Failed to create reply.',
+      );
+    }
+
+    return {
+      ...reply,
+      reactions: [],
+    };
   }
 }

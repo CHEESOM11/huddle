@@ -4,6 +4,8 @@ import { AuthModule } from "./auth/auth.module";
 import { ChannelsModule } from "./channels/channels.module";
 import { MessagesModule } from "./messages/messages.module";
 import { InvitesModule } from "./invites/invites.module";
+import { SearchModule } from "./search/search.module";
+import { DmsModule } from './dms/dms.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { InvitesModule } from "./invites/invites.module";
      ChannelsModule,
      MessagesModule,
      InvitesModule,
+     SearchModule,
+     DmsModule,
     ],
   controllers: [],
   providers: [],
