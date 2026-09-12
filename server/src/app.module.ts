@@ -5,6 +5,7 @@ import { ChannelsModule } from "./channels/channels.module";
 import { MessagesModule } from "./messages/messages.module";
 import { InvitesModule } from "./invites/invites.module";
 import { StorageModule } from "./storage/storage.module";
+import { HealthController } from "./health/health.controller";
 
 @Module({
   imports: [
@@ -17,9 +18,7 @@ import { StorageModule } from "./storage/storage.module";
      InvitesModule,
      StorageModule,
     ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [],
 })
 export class AppModule {}
-
-
