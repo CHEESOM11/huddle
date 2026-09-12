@@ -46,3 +46,27 @@ export async function deleteMessage(channelId, messageId) {
     token,
   })
 }
+
+// Threads: replies to a parent message. The workspace sends replies via the
+// `send_reply` socket event so they broadcast live to the channel room; these
+// REST helpers are the read path and a fallback.
+export async function fetchReplies(messageId) {
+  const token = getToken()
+  const data = await request(`/api/messages/${messageId}/replies`, {
+    method: 'GET',
+    token,
+  })
+
+  return data?.data ?? []
+}
+
+export async function sendReply(messageId, content) {
+  const token = getToken()
+  const data = await request(`/api/messages/${messageId}/replies`, {
+    method: 'POST',
+    token,
+    body: { content },
+  })
+
+  return data?.data ?? null
+}

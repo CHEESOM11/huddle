@@ -609,7 +609,7 @@ import {
 
 import * as crypto from "crypto";
 
-import { getUserDisplayNames } from "../config/supabaseAdmin";
+import { getProfileNames } from "../config/profiles";
 
 @Injectable()
 export class ChannelsService {
@@ -895,7 +895,8 @@ export class ChannelsService {
       );
     }
 
-    const memberNames = await getUserDisplayNames(
+    const memberNames = await getProfileNames(
+      supabase,
       (members ?? []).map((member) => member.user_id),
     );
 

@@ -254,6 +254,10 @@ export class MessagesGateway {
           body?.fileName,
           body?.fileType,
           body?.fileSize,
+          {
+            userId: client.data.userId,
+            name: client.data.name,
+          },
         );
 
       this.server
@@ -436,6 +440,78 @@ export class MessagesGateway {
     }
   }
 
+  @SubscribeMessage('send_reply')
+  async sendReply(
+    @MessageBody()
+    body: {
+      messageId: string;
+      content: string;
+    },
+    @ConnectedSocket()
+    client: Socket,
+  ) {
+    try {
+      const messageId =
+        body?.messageId;
+
+      const content =
+        body?.content;
+
+      const accessToken =
+        client.data.accessToken;
+
+      const userId =
+        client.data.userId;
+
+      if (!accessToken || !userId) {
+        return {
+          event: 'error',
+          data: { message: 'Socket authentication required.' },
+        };
+      }
+
+      if (!messageId || !content?.trim()) {
+        return {
+          event: 'error',
+          data: { message: 'messageId and content are required.' },
+        };
+      }
+
+      const reply =
+        await this.messagesService.createReply(
+          messageId,
+          content,
+          accessToken,
+          {
+            userId,
+            name: client.data.name,
+          },
+        );
+
+      // Broadcast to the reply's channel room so everyone with the thread
+      // open sees it live (the sender included).
+      this.server
+        .to(this.getRoomName(reply.channel_id))
+        .emit('reply_created', {
+          ...reply,
+          reactions: [],
+        });
+
+      return {
+        event: 'reply_sent',
+        data: {
+          ...reply,
+          reactions: [],
+        },
+      };
+    } catch (error) {
+      return {
+        event: 'error',
+        data: { message: error instanceof Error ? error.message : 'Unable to send reply.' },
+      };
+    }
+  }
+
   @SubscribeMessage('typing')
   async typing(
     @MessageBody()
@@ -550,16 +626,11 @@ export class MessagesGateway {
         accessToken,
       );
 
-      const reactionsMessageCheck =
-        await this.messagesService.getMessages(
-          channelId,
-          accessToken,
-        );
-
       const messageExists =
-        reactionsMessageCheck.some(
-          (message) =>
-            message.id === messageId,
+        await this.messagesService.messageBelongsToChannel(
+          channelId,
+          messageId,
+          accessToken,
         );
 
       if (!messageExists) {

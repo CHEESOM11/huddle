@@ -11,7 +11,7 @@ import {
   SupabaseClient,
 } from '@supabase/supabase-js';
 
-import { getUserDisplayNames } from '../config/supabaseAdmin';
+import { getProfileNames } from '../config/profiles';
 
 @Injectable()
 export class MessagesService {
@@ -128,6 +128,31 @@ export class MessagesService {
     return data;
   }
 
+  // Lightweight existence check: is `messageId` a message in `channelId`?
+  // Used by the reaction gateway so it doesn't have to load every message
+  // (and its reactions + sender names) just to validate a single id.
+  async messageBelongsToChannel(
+    channelId: string,
+    messageId: string,
+    accessToken: string,
+  ): Promise<boolean> {
+    const authenticatedSupabase =
+      this.getAuthenticatedClient(accessToken);
+
+    const { data, error } = await authenticatedSupabase
+      .from('messages')
+      .select('id')
+      .eq('id', messageId)
+      .eq('channel_id', channelId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return Boolean(data);
+  }
+
   async sendMessage(
     channelId: string,
     content: string,
@@ -136,6 +161,7 @@ export class MessagesService {
     fileName?: string,
     fileType?: string,
     fileSize?: number,
+    sender?: { userId: string; name: string | null },
   ) {
     if (!content?.trim() && !filePath) {
       throw new BadRequestException(
@@ -143,14 +169,16 @@ export class MessagesService {
       );
     }
 
-    const user =
-      await this.getAuthenticatedUser(accessToken);
+    // The socket gateway already authenticated the caller on connect, so it
+    // passes `sender` in to skip a redundant `auth.getUser` round trip. The
+    // REST path authenticates normally.
+    const user = sender
+      ? { id: sender.userId }
+      : await this.getAuthenticatedUser(accessToken);
 
-    await this.verifyChannelExists(
-      channelId,
-      accessToken,
-    );
-
+    // Membership implies the channel exists (channel_members.channel_id is a
+    // foreign key), so this single check replaces the old
+    // verifyChannelExists + verifyChannelMembership pair and saves a round trip.
     await this.verifyChannelMembership(
       channelId,
       user.id,
@@ -185,7 +213,8 @@ export class MessagesService {
 
     return {
       ...data,
-      sender_name: this.getNameFromUser(user),
+      sender_name:
+        sender?.name ?? this.getNameFromUser(user),
     };
   }
 
@@ -250,7 +279,8 @@ export class MessagesService {
       }),
     );
 
-    const senderNames = await getUserDisplayNames(
+    const senderNames = await getProfileNames(
+      authenticatedSupabase,
       enriched.map((message) => message.user_id),
     );
 
@@ -638,11 +668,21 @@ export class MessagesService {
         accessToken,
       );
 
+    const senderNames =
+      await getProfileNames(
+        authenticatedSupabase,
+        (replies ?? []).map(
+          (reply) => reply.user_id,
+        ),
+      );
+
     return (replies ?? []).map(
       (reply) => ({
         ...reply,
         reactions:
           reactionsMap.get(reply.id) ?? [],
+        sender_name:
+          senderNames.get(reply.user_id) ?? null,
       }),
     );
   }
@@ -651,6 +691,7 @@ export class MessagesService {
     messageId: string,
     content: string,
     accessToken: string,
+    sender?: { userId: string; name: string | null },
   ) {
     if (!messageId) {
       throw new BadRequestException(
@@ -664,8 +705,11 @@ export class MessagesService {
       );
     }
 
-    const user =
-      await this.getAuthenticatedUser(accessToken);
+    // The socket gateway already authenticated the caller on connect, so it
+    // passes `sender` in to skip a redundant `auth.getUser` round trip.
+    const user = sender
+      ? { id: sender.userId }
+      : await this.getAuthenticatedUser(accessToken);
 
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
@@ -726,6 +770,8 @@ export class MessagesService {
     return {
       ...reply,
       reactions: [],
+      sender_name:
+        sender?.name ?? this.getNameFromUser(user),
     };
   }
 }

@@ -7,6 +7,7 @@ import { InvitesModule } from "./invites/invites.module";
 import { StorageModule } from "./storage/storage.module";
 import { SearchModule } from "./search/search.module";
 import { DmsModule } from './dms/dms.module';
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { DmsModule } from './dms/dms.module';
      StorageModule,
      SearchModule,
      DmsModule,
+     UsersModule,
     ],
   controllers: [],
   providers: [],
