@@ -11,8 +11,20 @@ import {
   SupabaseClient,
 } from '@supabase/supabase-js';
 
+import { getUserDisplayNames } from '../config/supabaseAdmin';
+
 @Injectable()
 export class MessagesService {
+  private getNameFromUser(user: any): string | null {
+    const meta = user?.user_metadata ?? {};
+    return (
+      meta?.name ??
+      meta?.full_name ??
+      user?.email ??
+      null
+    );
+  }
+
   private getAuthenticatedClient(
     accessToken: string,
   ): SupabaseClient {
@@ -168,7 +180,10 @@ export class MessagesService {
       throw new BadRequestException(error.message);
     }
 
-    return data;
+    return {
+      ...data,
+      sender_name: this.getNameFromUser(user),
+    };
   }
 
   async getMessages(
@@ -224,13 +239,23 @@ export class MessagesService {
         accessToken,
       );
 
-    return (messages ?? []).map(
+    const enriched = (messages ?? []).map(
       (message) => ({
         ...message,
         reactions:
           reactionsMap.get(message.id) ?? [],
       }),
     );
+
+    const senderNames = await getUserDisplayNames(
+      enriched.map((message) => message.user_id),
+    );
+
+    return enriched.map((message) => ({
+      ...message,
+      sender_name:
+        senderNames.get(message.user_id) ?? null,
+    }));
   }
 
   async editMessage(
@@ -321,7 +346,10 @@ export class MessagesService {
       );
     }
 
-    return updatedMessage;
+    return {
+      ...updatedMessage,
+      sender_name: this.getNameFromUser(user),
+    };
   }
 
   async deleteMessage(

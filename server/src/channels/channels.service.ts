@@ -358,6 +358,8 @@ import {
 
 import * as crypto from "crypto";
 
+import { getUserDisplayNames } from "../config/supabaseAdmin";
+
 @Injectable()
 export class ChannelsService {
   /**
@@ -649,13 +651,20 @@ export class ChannelsService {
       );
     }
 
+    const memberNames = await getUserDisplayNames(
+      (members ?? []).map((member) => member.user_id),
+    );
+
     return {
       message:
         "Channel members retrieved successfully.",
       channelId,
       memberCount:
         members?.length ?? 0,
-      members: members ?? [],
+      members: (members ?? []).map((member) => ({
+        ...member,
+        name: memberNames.get(member.user_id) ?? null,
+      })),
     };
   }
 

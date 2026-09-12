@@ -680,6 +680,10 @@ export class MessagesGateway {
     body: {
       channelId: string;
       content: string;
+      filePath?: string;
+      fileName?: string;
+      fileType?: string;
+      fileSize?: number;
     },
     @ConnectedSocket()
     client: Socket,
@@ -707,12 +711,12 @@ export class MessagesGateway {
 
       if (
         !channelId ||
-        !content?.trim()
+        (!content?.trim() && !body?.filePath)
       ) {
         return {
           event: 'error',
           message:
-            'channelId and content are required.',
+            'channelId and content (or a file) are required.',
         };
       }
 
@@ -732,6 +736,10 @@ export class MessagesGateway {
           channelId,
           content,
           accessToken,
+          body?.filePath,
+          body?.fileName,
+          body?.fileType,
+          body?.fileSize,
         );
 
       this.server

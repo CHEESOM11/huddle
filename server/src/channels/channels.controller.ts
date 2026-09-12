@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Get,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
@@ -111,5 +112,15 @@ export class ChannelsController {
   ) {
     const accessToken = authorization?.replace(/^Bearer\s+/i, "");
     return this.storageService.uploadFile(file, channelId, accessToken);
+  }
+
+  @Get(":channelId/file")
+  async getFileUrl(
+    @Param("channelId") channelId: string,
+    @Query("path") path: string,
+    @Headers("authorization") authorization: string,
+  ) {
+    const accessToken = authorization?.replace(/^Bearer\s+/i, "");
+    return this.storageService.getSignedUrl(path, channelId, accessToken);
   }
 }
