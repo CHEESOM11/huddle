@@ -165,7 +165,10 @@ export class MessagesService {
       .insert({
         channel_id: channelId,
         user_id: user.id,
-        content: content?.trim() || null,
+        // `content` is NOT NULL in the DB, so a file-only message (no text)
+        // must store an empty string rather than NULL or the insert is
+        // rejected with "null value in column content".
+        content: content?.trim() || "",
         file_path: filePath || null,
         file_name: fileName || null,
         file_type: fileType || null,

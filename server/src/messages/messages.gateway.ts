@@ -606,16 +606,14 @@ export class MessagesGateway {
       if (!accessToken || !userId) {
         return {
           event: 'error',
-          message:
-            'Socket authentication required.',
+          data: { message: 'Socket authentication required.' },
         };
       }
 
       if (!channelId) {
         return {
           event: 'error',
-          message:
-            'channelId is required.',
+          data: { message: 'channelId is required.' },
         };
       }
 
@@ -637,10 +635,7 @@ export class MessagesGateway {
     } catch (error) {
       return {
         event: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to join channel.',
+        data: { message: error instanceof Error ? error.message : 'Unable to join channel.' },
       };
     }
   }
@@ -658,8 +653,7 @@ export class MessagesGateway {
     if (!channelId) {
       return {
         event: 'error',
-        message:
-          'channelId is required.',
+        data: { message: 'channelId is required.' },
       };
     }
 
@@ -704,8 +698,7 @@ export class MessagesGateway {
       if (!accessToken || !userId) {
         return {
           event: 'error',
-          message:
-            'Socket authentication required.',
+          data: { message: 'Socket authentication required.' },
         };
       }
 
@@ -715,8 +708,7 @@ export class MessagesGateway {
       ) {
         return {
           event: 'error',
-          message:
-            'channelId and content (or a file) are required.',
+          data: { message: 'channelId and content (or a file) are required.' },
         };
       }
 
@@ -726,8 +718,7 @@ export class MessagesGateway {
       if (!client.rooms.has(room)) {
         return {
           event: 'error',
-          message:
-            'You must join the channel first.',
+          data: { message: 'You must join the channel first.' },
         };
       }
 
@@ -759,10 +750,7 @@ export class MessagesGateway {
     } catch (error) {
       return {
         event: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to send message.',
+        data: { message: error instanceof Error ? error.message : 'Unable to send message.' },
       };
     }
   }
@@ -797,8 +785,7 @@ export class MessagesGateway {
       if (!accessToken || !userId) {
         return {
           event: 'error',
-          message:
-            'Socket authentication required.',
+          data: { message: 'Socket authentication required.' },
         };
       }
 
@@ -809,8 +796,7 @@ export class MessagesGateway {
       ) {
         return {
           event: 'error',
-          message:
-            'channelId, messageId, and content are required.',
+          data: { message: 'channelId, messageId, and content are required.' },
         };
       }
 
@@ -820,8 +806,7 @@ export class MessagesGateway {
       if (!client.rooms.has(room)) {
         return {
           event: 'error',
-          message:
-            'You must join the channel first.',
+          data: { message: 'You must join the channel first.' },
         };
       }
 
@@ -850,10 +835,7 @@ export class MessagesGateway {
     } catch (error) {
       return {
         event: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to edit message.',
+        data: { message: error instanceof Error ? error.message : 'Unable to edit message.' },
       };
     }
   }
@@ -884,16 +866,14 @@ export class MessagesGateway {
       if (!accessToken || !userId) {
         return {
           event: 'error',
-          message:
-            'Socket authentication required.',
+          data: { message: 'Socket authentication required.' },
         };
       }
 
       if (!channelId || !messageId) {
         return {
           event: 'error',
-          message:
-            'channelId and messageId are required.',
+          data: { message: 'channelId and messageId are required.' },
         };
       }
 
@@ -903,8 +883,7 @@ export class MessagesGateway {
       if (!client.rooms.has(room)) {
         return {
           event: 'error',
-          message:
-            'You must join the channel first.',
+          data: { message: 'You must join the channel first.' },
         };
       }
 
@@ -929,10 +908,7 @@ export class MessagesGateway {
     } catch (error) {
       return {
         event: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to delete message.',
+        data: { message: error instanceof Error ? error.message : 'Unable to delete message.' },
       };
     }
   }
@@ -1020,8 +996,7 @@ export class MessagesGateway {
       if (!accessToken || !userId) {
         return {
           event: 'error',
-          message:
-            'Socket authentication required.',
+          data: { message: 'Socket authentication required.' },
         };
       }
 
@@ -1032,8 +1007,7 @@ export class MessagesGateway {
       ) {
         return {
           event: 'error',
-          message:
-            'channelId, messageId, and emoji are required.',
+          data: { message: 'channelId, messageId, and emoji are required.' },
         };
       }
 
@@ -1043,8 +1017,7 @@ export class MessagesGateway {
       if (!client.rooms.has(room)) {
         return {
           event: 'error',
-          message:
-            'You must join the channel first.',
+          data: { message: 'You must join the channel first.' },
         };
       }
 
@@ -1069,8 +1042,7 @@ export class MessagesGateway {
       if (!messageExists) {
         return {
           event: 'error',
-          message:
-            'Message does not belong to this channel.',
+          data: { message: 'Message does not belong to this channel.' },
         };
       }
 
@@ -1108,10 +1080,7 @@ export class MessagesGateway {
     } catch (error) {
       return {
         event: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unable to toggle reaction.',
+        data: { message: error instanceof Error ? error.message : 'Unable to toggle reaction.' },
       };
     }
   }

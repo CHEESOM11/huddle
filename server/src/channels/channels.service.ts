@@ -517,43 +517,10 @@ export class ChannelsService {
       );
     }
 
-    const channels =
-      await Promise.all(
-        (data ?? []).map(
-          async (item) => {
-            const {
-              count,
-              error: countError,
-            } = await supabase
-              .from("channel_members")
-              .select("id", {
-                count: "exact",
-                head: true,
-              })
-              .eq(
-                "channel_id",
-                item.channel_id,
-              );
-
-            if (countError) {
-              throw new BadRequestException(
-                countError.message,
-              );
-            }
-
-            return {
-              ...item,
-              memberCount:
-                count ?? 0,
-            };
-          },
-        ),
-      );
-
     return {
       message:
         "Channels retrieved successfully.",
-      channels,
+      channels: data,
     };
   }
 

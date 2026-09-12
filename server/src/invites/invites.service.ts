@@ -116,24 +116,16 @@ export class InvitesService {
       );
     }
 
-    // Find the invite.
+    // Find the invite by code. Read only `channel_id` here: the embedded
+    // `channels` relation is RLS-filtered for a user who isn't a member yet,
+    // so it comes back null. We read the channel AFTER joining below, when
+    // the user is a member and the row is visible to them.
     const {
       data: invite,
       error: inviteError,
     } = await supabase
       .from("invites")
-      .select(
-        `
-        code,
-        channel_id,
-        channels (
-          id,
-          name,
-          created_by,
-          created_at
-        )
-      `,
-      )
+      .select("channel_id")
       .eq("code", code.trim())
       .maybeSingle();
 
@@ -147,13 +139,7 @@ export class InvitesService {
       );
     }
 
-    const channel = invite.channels;
-
-    if (!channel) {
-      throw new NotFoundException(
-        "The channel associated with this invite no longer exists.",
-      );
-    }
+    const channelId = invite.channel_id;
 
     // Check whether the user is already a member.
     const {
@@ -162,7 +148,7 @@ export class InvitesService {
     } = await supabase
       .from("channel_members")
       .select("channel_id, user_id")
-      .eq("channel_id", invite.channel_id)
+      .eq("channel_id", channelId)
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -178,19 +164,43 @@ export class InvitesService {
       );
     }
 
-    // Add the authenticated user to the channel.
+    // Add the authenticated user to the channel. Allowed by the
+    // `channel_members` INSERT policy (`user_id = auth.uid()`): the invitee
+    // adds themselves, so no service-role client is needed.
     const {
       error: joinError,
     } = await supabase
       .from("channel_members")
       .insert({
-        channel_id: invite.channel_id,
+        channel_id: channelId,
         user_id: user.id,
       });
 
     if (joinError) {
       throw new BadRequestException(
         joinError.message,
+      );
+    }
+
+    // Now that the user is a member, the channel row is visible to them.
+    const {
+      data: channel,
+      error: channelError,
+    } = await supabase
+      .from("channels")
+      .select("id, name, created_by, created_at")
+      .eq("id", channelId)
+      .maybeSingle();
+
+    if (channelError) {
+      throw new BadRequestException(
+        channelError.message,
+      );
+    }
+
+    if (!channel) {
+      throw new NotFoundException(
+        "The channel associated with this invite no longer exists.",
       );
     }
 
