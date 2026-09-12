@@ -5,6 +5,8 @@ import { ChannelsModule } from "./channels/channels.module";
 import { MessagesModule } from "./messages/messages.module";
 import { InvitesModule } from "./invites/invites.module";
 import { StorageModule } from "./storage/storage.module";
+import { SearchModule } from "./search/search.module";
+import { DmsModule } from './dms/dms.module';
 
 @Module({
   imports: [
@@ -16,10 +18,10 @@ import { StorageModule } from "./storage/storage.module";
      MessagesModule,
      InvitesModule,
      StorageModule,
+     SearchModule,
+     DmsModule,
     ],
   controllers: [],
   providers: [],
 })
 export class AppModule {}
-
-

@@ -174,6 +174,7 @@ export class InvitesService {
       .insert({
         channel_id: channelId,
         user_id: user.id,
+        role: "member",
       });
 
     if (joinError) {
