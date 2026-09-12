@@ -13,6 +13,11 @@ export function forgotPassword(payload) {
   return request('/api/auth/forgot-password', { body: payload })
 }
 
+export function resetPassword(payload) {
+  const token = getToken()
+  return request('/api/auth/reset-password', { method: 'POST', token, body: payload })
+}
+
 export async function getCurrentSession() {
   const token = getToken()
 

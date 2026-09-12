@@ -3,23 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginUser, getCurrentSession } from '../api/auth';
 import { setToken, clearToken, setOnboardingSeen } from '../utils/storage';
 import Spinner from '../components/Spinner';
+import Typewriter from '../components/Typewriter';
+import AuthBubbles from '../components/AuthBubbles';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { faEye, faEyeSlash, faComments, faEnvelope, faBell } from '@fortawesome/free-solid-svg-icons';
+import { faCommentDots as faCommentDotsRegular } from '@fortawesome/free-regular-svg-icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const demoUsers = [
-  {
-    name: 'Alex Johnson',
-    email: 'alex@huddle.test',
-    note: 'as yourself',
-  },
-  {
-    name: 'Maya Chen',
-    email: 'maya@huddle.test',
-    note: "see Maya's view",
-  },
-];
 
 function SignInPage() {
   const navigate = useNavigate();
@@ -31,6 +21,7 @@ function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const confirmed = location.state?.confirmed === true;
+  const passwordReset = location.state?.passwordReset === true;
 
   const validate = () => {
     const nextErrors = {};
@@ -96,22 +87,22 @@ function SignInPage() {
       hasError ? 'border-red-500' : 'border-gray-200'
     }`;
 
-  const chooseDemoUser = (user) => {
-    setEmail(user.email);
-    setPassword('demo123');
-    setErrors({});
-    setSubmitError('');
-  };
-
   return (
     <main className="flex min-h-screen flex-col bg-cream lg:flex-row">
-      <section className="flex min-h-[420px] flex-col bg-plum px-8 py-8 text-cream sm:px-12 lg:min-h-screen lg:w-[47%] lg:px-14 lg:py-10">
-        <div className="text-sm font-semibold tracking-wide text-cream/90">•••&nbsp;&nbsp;Huddle</div>
+      <section className="relative isolate flex min-h-[420px] flex-col overflow-hidden bg-plum px-8 py-8 text-cream sm:px-12 lg:min-h-screen lg:w-[47%] lg:px-14 lg:py-10 auth-panel-in">
+        <AuthBubbles />
 
-        <div className="mt-14 max-w-xl lg:mt-24">
+        <div className="flex items-center gap-2.5">
+          <FontAwesomeIcon icon={faCommentDotsRegular} className="h-8 w-8 text-white" aria-hidden="true" />
+          <span className="text-lg font-semibold tracking-wide text-cream/90">Huddle</span>
+        </div>
+
+        <div className="auth-fade-up d1 mt-14 max-w-xl lg:mt-24">
           <h1 className="text-4xl font-bold leading-tight tracking-normal text-cream sm:text-5xl">
             Your team,
-            <span className="block text-lime-300">always in sync</span>
+            <span className="block min-h-[1.25em] text-lime-300">
+              <Typewriter />
+            </span>
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-cream/80">
             Huddle keeps remote teams connected through channels — simple, fast, and focused on what matters.
@@ -119,21 +110,21 @@ function SignInPage() {
 
           <div className="mt-8 space-y-5">
             <div className="flex gap-4">
-              <span className="text-2xl" aria-hidden="true">💬</span>
+              <FontAwesomeIcon icon={faComments} className="text-2xl text-lime-300" aria-hidden="true" />
               <div>
                 <p className="font-bold text-cream">Channel conversations</p>
                 <p className="text-sm text-cream/65">Organize discussions by topic or project</p>
               </div>
             </div>
             <div className="flex gap-4">
-              <span className="text-2xl" aria-hidden="true">✉️</span>
+              <FontAwesomeIcon icon={faEnvelope} className="text-2xl text-lime-300" aria-hidden="true" />
               <div>
                 <p className="font-bold text-cream">Direct messages</p>
                 <p className="text-sm text-cream/65">Private conversations with teammates</p>
               </div>
             </div>
             <div className="flex gap-4">
-              <span className="text-2xl" aria-hidden="true">🔔</span>
+              <FontAwesomeIcon icon={faBell} className="text-2xl text-lime-300" aria-hidden="true" />
               <div>
                 <p className="font-bold text-cream">Smart notifications</p>
                 <p className="text-sm text-cream/65">Stay informed without the noise</p>
@@ -141,13 +132,7 @@ function SignInPage() {
             </div>
           </div>
 
-          <div className="mt-9 rounded-2xl bg-white/10 p-5 text-sm leading-6 text-cream/85 ring-1 ring-white/15">
-            <strong className="text-lime-300">Sprint 1 scope:</strong>{' '}
-            Account creation, sign in, and channel messaging. Additional features ship in future sprints.
-          </div>
         </div>
-
-        <p className="mt-10 text-xs text-cream/45 lg:mt-auto">Huddle — v0.1 sprint prototype</p>
       </section>
 
       <section className="flex flex-1 items-center justify-center bg-cream px-6 py-10 sm:px-10 lg:w-[53%] lg:py-12">
@@ -163,6 +148,12 @@ function SignInPage() {
             </p>
           )}
 
+          {passwordReset && (
+            <p className="form-message-in mt-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600">
+              Password updated. Please sign in with your new password.
+            </p>
+          )}
+
           <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
             <div>
               <label htmlFor="email" className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-700">
@@ -171,7 +162,7 @@ function SignInPage() {
               <input
                 id="email"
                 type="email"
-                placeholder="you@company.com"
+                placeholder="name@gmail.com"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -259,23 +250,6 @@ function SignInPage() {
               Create account
             </Link>
           </p>
-
-          <div className="mt-8">
-            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Quick demo access</p>
-            <div className="mt-3 space-y-2">
-              {demoUsers.map((user) => (
-                <button
-                  key={user.email}
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-plum/40 hover:bg-white/80"
-                  onClick={() => chooseDemoUser(user)}
-                >
-                  <span className="font-semibold text-black">{user.name}</span>
-                  <span className="text-sm text-gray-500">{user.note}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </section>
     </main>

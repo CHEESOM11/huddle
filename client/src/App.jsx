@@ -6,6 +6,7 @@ import SignInPage from './pages/SignInPage';
 import CreateAccountPage from './pages/CreateAccountPage';
 import CheckEmailPage from './pages/CheckEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import Onboarding from './pages/Onboarding';
 import ProfileSetupPage from './pages/ProfileSetupPage';
 import ConfirmEmailPage from './pages/ConfirmEmailPage';
@@ -64,8 +65,8 @@ function StartupGate() {
 
   if (state === 'error') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-huddle-light px-6 text-center">
-        <p className="text-gray-600">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-cream px-6 text-center">
+        <p className="text-plum/70">
           Couldn't reach the server. Check your connection and try again.
         </p>
         <button
@@ -74,7 +75,7 @@ function StartupGate() {
             setState('loading');
             setAttempt((n) => n + 1);
           }}
-          className="rounded-lg bg-huddle-purple px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-huddle-purple-hover active:scale-[0.99]"
+          className="rounded-lg bg-plum px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-plum/90 active:scale-[0.99]"
         >
           Retry
         </button>
@@ -163,6 +164,7 @@ function App() {
         <Route path="/create-account" element={<CreateAccountPage />} />
         <Route path="/check-email" element={<CheckEmailPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/confirm-email" element={<ConfirmEmailPage />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile-setup" element={<ProfileSetupPage />} />
