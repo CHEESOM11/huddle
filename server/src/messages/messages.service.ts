@@ -17,6 +17,7 @@ import { getProfileNames } from '../config/profiles';
 export class MessagesService {
   private getNameFromUser(user: any): string | null {
     const meta = user?.user_metadata ?? {};
+
     return (
       meta?.name ??
       meta?.full_name ??
@@ -139,12 +140,13 @@ export class MessagesService {
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
 
-    const { data, error } = await authenticatedSupabase
-      .from('messages')
-      .select('id')
-      .eq('id', messageId)
-      .eq('channel_id', channelId)
-      .maybeSingle();
+    const { data, error } =
+      await authenticatedSupabase
+        .from('messages')
+        .select('id')
+        .eq('id', messageId)
+        .eq('channel_id', channelId)
+        .maybeSingle();
 
     if (error) {
       throw new BadRequestException(error.message);
@@ -161,7 +163,10 @@ export class MessagesService {
     fileName?: string,
     fileType?: string,
     fileSize?: number,
-    sender?: { userId: string; name: string | null },
+    sender?: {
+      userId: string;
+      name: string | null;
+    },
   ) {
     if (!content?.trim() && !filePath) {
       throw new BadRequestException(
@@ -188,24 +193,26 @@ export class MessagesService {
     const authenticatedSupabase =
       this.getAuthenticatedClient(accessToken);
 
-    const { data, error } = await authenticatedSupabase
-      .from('messages')
-      .insert({
-        channel_id: channelId,
-        user_id: user.id,
-        // `content` is NOT NULL in the DB, so a file-only message (no text)
-        // must store an empty string rather than NULL or the insert is
-        // rejected with "null value in column content".
-        content: content?.trim() || "",
-        file_path: filePath || null,
-        file_name: fileName || null,
-        file_type: fileType || null,
-        file_size: fileSize || null,
-      })
-      .select(
-        'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at, parent_id',
-      )
-      .single();
+    const { data, error } =
+      await authenticatedSupabase
+        .from('messages')
+        .insert({
+          channel_id: channelId,
+          user_id: user.id,
+
+          // `content` is NOT NULL in the DB, so a file-only message (no text)
+          // must store an empty string rather than NULL or the insert is
+          // rejected with "null value in column content".
+          content: content?.trim() || '',
+          file_path: filePath || null,
+          file_name: fileName || null,
+          file_type: fileType || null,
+          file_size: fileSize || null,
+        })
+        .select(
+          'id, channel_id, user_id, content, file_path, file_name, file_type, file_size, created_at, parent_id',
+        )
+        .single();
 
     if (error) {
       throw new BadRequestException(error.message);
@@ -260,6 +267,17 @@ export class MessagesService {
       throw new BadRequestException(error.message);
     }
 
+    const replyCounts = new Map<string, number>();
+
+    for (const message of messages ?? []) {
+      if (message.parent_id) {
+        replyCounts.set(
+          message.parent_id,
+          (replyCounts.get(message.parent_id) ?? 0) + 1,
+        );
+      }
+    }
+
     const messageIds =
       (messages ?? []).map(
         (message) => message.id,
@@ -281,13 +299,17 @@ export class MessagesService {
 
     const senderNames = await getProfileNames(
       authenticatedSupabase,
-      enriched.map((message) => message.user_id),
+      enriched.map(
+        (message) => message.user_id,
+      ),
     );
 
     return enriched.map((message) => ({
       ...message,
       sender_name:
         senderNames.get(message.user_id) ?? null,
+      reply_count:
+        replyCounts.get(message.id) ?? 0,
     }));
   }
 
@@ -418,9 +440,7 @@ export class MessagesService {
       error: findError,
     } = await authenticatedSupabase
       .from('messages')
-      .select(
-        'id, channel_id, user_id',
-      )
+      .select('id, channel_id, user_id')
       .eq('id', messageId)
       .eq('channel_id', channelId)
       .maybeSingle();
@@ -691,7 +711,10 @@ export class MessagesService {
     messageId: string,
     content: string,
     accessToken: string,
-    sender?: { userId: string; name: string | null },
+    sender?: {
+      userId: string;
+      name: string | null;
+    },
   ) {
     if (!messageId) {
       throw new BadRequestException(
