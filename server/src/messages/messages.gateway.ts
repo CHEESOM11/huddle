@@ -552,6 +552,7 @@ export class MessagesGateway {
       client.to(room).emit(
         'user_typing',
         {
+          channelId,
           userId:
             client.data.userId,
           name:
@@ -581,6 +582,7 @@ export class MessagesGateway {
       client.to(room).emit(
         'user_stopped_typing',
         {
+          channelId,
           userId:
             client.data.userId,
         },
