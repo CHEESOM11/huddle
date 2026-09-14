@@ -149,4 +149,131 @@ export class StorageService {
       path: filePath,
     };
   }
+
+  // Stores a file for a direct-message conversation. Mirrors `uploadFile` but
+  // verifies `conversation_members` membership and scopes the path to
+  // `${conversationId}/`, so path-prefix checks also prevent cross-conversation
+  // file access.
+  async uploadDmFile(
+    file: Express.Multer.File,
+    conversationId: string,
+    accessToken: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException("File is required.");
+    }
+    if (!conversationId) {
+      throw new BadRequestException("Conversation ID is required.");
+    }
+    if (!accessToken) {
+      throw new UnauthorizedException("Authorization token is required.");
+    }
+    const supabase = this.getAuthenticatedClient(accessToken);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+    if (userError || !user) {
+      throw new UnauthorizedException(
+        "Invalid or expired authorization token.",
+      );
+    }
+
+    // Check that the user belongs to the conversation
+    const { data: membership, error: membershipError } = await supabase
+      .from("conversation_members")
+      .select("conversation_id")
+      .eq("conversation_id", conversationId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (membershipError) {
+      throw new BadRequestException(membershipError.message);
+    }
+    if (!membership) {
+      throw new UnauthorizedException(
+        "You are not a member of this conversation.",
+      );
+    }
+
+    const fileName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `${conversationId}/${user.id}/${Date.now()}-${fileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from("huddle-files")
+      .upload(filePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+    if (uploadError) {
+      throw new BadRequestException(uploadError.message);
+    }
+    return {
+      file_path: filePath,
+      file_name: file.originalname,
+      file_type: file.mimetype,
+      file_size: file.size,
+    };
+  }
+
+  // Generate a short-lived, signed download URL for a DM file. Mirrors
+  // `getSignedUrl` but verifies `conversation_members` membership and requires
+  // the stored path to begin with `${conversationId}/`.
+  async getDmSignedUrl(
+    filePath: string,
+    conversationId: string,
+    accessToken: string,
+  ) {
+    if (!filePath) {
+      throw new BadRequestException("File path is required.");
+    }
+    if (!conversationId) {
+      throw new BadRequestException("Conversation ID is required.");
+    }
+    if (!accessToken) {
+      throw new UnauthorizedException("Authorization token is required.");
+    }
+
+    if (!filePath.startsWith(`${conversationId}/`)) {
+      throw new BadRequestException("Invalid file path.");
+    }
+
+    const supabase = this.getAuthenticatedClient(accessToken);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+    if (userError || !user) {
+      throw new UnauthorizedException(
+        "Invalid or expired authorization token.",
+      );
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("conversation_members")
+      .select("conversation_id")
+      .eq("conversation_id", conversationId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (membershipError) {
+      throw new BadRequestException(membershipError.message);
+    }
+    if (!membership) {
+      throw new UnauthorizedException(
+        "You are not a member of this conversation.",
+      );
+    }
+
+    const { data, error } = await supabase.storage
+      .from("huddle-files")
+      .createSignedUrl(filePath, 3600);
+    if (error || !data?.signedUrl) {
+      throw new BadRequestException(
+        error?.message ?? "Unable to generate download link.",
+      );
+    }
+
+    return {
+      url: data.signedUrl,
+      path: filePath,
+    };
+  }
 }

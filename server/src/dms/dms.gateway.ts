@@ -128,11 +128,11 @@ export class DmsGateway {
         };
       }
 
-      if (!conversationId || !content?.trim()) {
+      if (!conversationId || (!content?.trim() && !body?.filePath)) {
         return {
           event: "error",
           data: {
-            message: "conversationId and content are required.",
+            message: "conversationId and content (or a file) are required.",
           },
         };
       }
