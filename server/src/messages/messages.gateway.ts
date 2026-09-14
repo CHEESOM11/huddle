@@ -505,7 +505,7 @@ export class MessagesGateway {
           content,
           accessToken,
           {
-            userId,
+            userId: client.data.userId,
             name: client.data.name,
           },
         );
