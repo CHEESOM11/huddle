@@ -287,7 +287,7 @@ export class DmsService {
     } = await client
       .from('direct_messages')
       .select(
-        'id, conversation_id, user_id, content, created_at',
+        'id, conversation_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
       )
       .eq('conversation_id', conversationId)
       .order('created_at', {
@@ -307,11 +307,15 @@ export class DmsService {
     conversationId: string,
     content: string,
     accessToken: string,
+    filePath?: string,
+    fileName?: string,
+    fileType?: string,
+    fileSize?: number,
   ) {
     const trimmedContent =
       content?.trim();
 
-    if (!trimmedContent) {
+    if (!trimmedContent && !filePath ) {
       throw new BadRequestException(
         'Message content cannot be empty.',
       );
@@ -334,10 +338,14 @@ export class DmsService {
       .insert({
         conversation_id: conversationId,
         user_id: user.id,
-        content: trimmedContent,
+        content: trimmedContent ?? "",
+        file_path: filePath ?? null,
+        file_name: fileName ?? null,
+        file_type: fileType ?? null,
+        file_size: fileSize ?? null,
       })
       .select(
-        'id, conversation_id, user_id, content, created_at',
+        'id, conversation_id, user_id, content, file_path, file_name, file_type, file_size, created_at',
       )
       .single();
 
@@ -349,6 +357,191 @@ export class DmsService {
     }
 
     return message;
+  }
+
+    async editMessage(
+    messageId: string,
+    content: string,
+    accessToken: string,
+  ) {
+    if (!content?.trim()) {
+      throw new BadRequestException("Message content cannot be empty.");
+    }
+
+    const client = this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await client.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      throw new UnauthorizedException("Invalid or expired authorization token.");
+    }
+
+    const { data: message, error: messageError } = await client
+      .from("direct_messages")
+      .select("id, user_id")
+      .eq("id", messageId)
+      .single();
+
+    if (messageError || !message) {
+      throw new NotFoundException("Message not found.");
+    }
+
+    if (message.user_id !== user.id) {
+      throw new ForbiddenException("You can only edit your own messages.");
+    }
+
+    const { data: updatedMessage, error: updateError } = await client
+      .from("direct_messages")
+      .update({
+        content: content.trim(),
+      })
+      .eq("id", messageId)
+      .select(`
+        id,
+        conversation_id,
+        user_id,
+        content,
+        file_path,
+        file_name,
+        file_type,
+        file_size,
+        created_at
+      `)
+      .single();
+
+    if (updateError) {
+      throw new BadRequestException(updateError.message);
+    }
+
+    return updatedMessage;
+  }
+
+  async deleteMessage(
+    messageId: string,
+    accessToken: string,
+  ) {
+    const client = this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await client.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      throw new UnauthorizedException("Invalid or expired authorization token.");
+    }
+
+    const { data: message, error: messageError } = await client
+      .from("direct_messages")
+      .select("id, user_id")
+      .eq("id", messageId)
+      .single();
+
+    if (messageError || !message) {
+      throw new NotFoundException("Message not found.");
+    }
+
+    if (message.user_id !== user.id) {
+      throw new ForbiddenException("You can only delete your own messages.");
+    }
+
+    const { error: deleteError } = await client
+      .from("direct_messages")
+      .delete()
+      .eq("id", messageId);
+
+    if (deleteError) {
+      throw new BadRequestException(deleteError.message);
+    }
+
+    return {
+      message: "Message deleted successfully.",
+    };
+  }
+
+  async toggleReaction(
+    messageId: string,
+    emoji: string,
+    accessToken: string,
+  ) {
+    if (!emoji?.trim()) {
+      throw new BadRequestException("Emoji is required.");
+    }
+
+    const client = this.getAuthenticatedClient(accessToken);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await client.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      throw new UnauthorizedException("Invalid or expired authorization token.");
+    }
+
+    const { data: existing, error: existingError } = await client
+      .from("direct_message_reactions")
+      .select("id")
+      .eq("message_id", messageId)
+      .eq("user_id", user.id)
+      .eq("emoji", emoji.trim())
+      .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(existingError.message);
+    }
+
+    if (existing) {
+      await client
+        .from("direct_message_reactions")
+        .delete()
+        .eq("id", existing.id);
+    } else {
+      const { error } = await client
+        .from("direct_message_reactions")
+        .insert({
+          message_id: messageId,
+          user_id: user.id,
+          emoji: emoji.trim(),
+        });
+
+      if (error) {
+        throw new BadRequestException(error.message);
+      }
+    }
+
+    const { data: reactions, error: reactionsError } = await client
+      .from("direct_message_reactions")
+      .select("emoji, user_id")
+      .eq("message_id", messageId);
+
+    if (reactionsError) {
+      throw new BadRequestException(reactionsError.message);
+    }
+
+    const grouped = new Map<
+      string,
+      { emoji: string; count: number; users: string[] }
+    >();
+
+    for (const reaction of reactions ?? []) {
+      if (!grouped.has(reaction.emoji)) {
+        grouped.set(reaction.emoji, {
+          emoji: reaction.emoji,
+          count: 0,
+          users: [],
+        });
+      }
+
+      const item = grouped.get(reaction.emoji)!;
+      item.count++;
+      item.users.push(reaction.user_id);
+    }
+
+    return Array.from(grouped.values());
   }
 
   private async verifyMembership(
