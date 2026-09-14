@@ -9,6 +9,10 @@ export function loginUser(payload) {
   return request('/api/auth/login', { body: payload })
 }
 
+export function googleAuth() {
+  return request('/api/auth/google', { method: 'GET' })
+}
+
 export function forgotPassword(payload) {
   return request('/api/auth/forgot-password', { body: payload })
 }

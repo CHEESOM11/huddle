@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { registerUser, getCurrentSession } from '../api/auth';
+import { registerUser, googleAuth, getCurrentSession } from '../api/auth';
 import { setToken, clearToken } from '../utils/storage';
 import Spinner from '../components/Spinner';
 import Typewriter from '../components/Typewriter';
@@ -8,6 +8,7 @@ import AuthBubbles from '../components/AuthBubbles';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEye, faEyeSlash, faComments, faEnvelope, faBell } from '@fortawesome/free-solid-svg-icons';
 import { faCommentDots as faCommentDotsRegular } from '@fortawesome/free-regular-svg-icons';
+import { faGoogle } from '@fortawesome/free-brands-svg-icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,6 +20,7 @@ function CreateAccountPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
   const validate = () => {
@@ -83,6 +85,28 @@ function CreateAccountPage() {
     }
   };
 
+  const handleGoogle = async () => {
+    setErrors({});
+    setSubmitError('');
+    setGoogleLoading(true);
+
+    try {
+      const data = await googleAuth();
+      const url = data?.url;
+
+      if (!url) {
+        setSubmitError('Unable to start Google sign-in. Please try again.');
+        return;
+      }
+
+      window.location.href = url;
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   const inputClass = (hasError) =>
     `w-full rounded-lg border bg-white px-4 py-3 text-gray-950 transition-all duration-200 placeholder:text-gray-400 focus:border-plum focus:outline-none focus:ring-2 focus:ring-plum/20 ${
       hasError ? 'border-red-500' : 'border-gray-200'
@@ -143,7 +167,27 @@ function CreateAccountPage() {
             <p className="mt-2 text-sm text-gray-600">Join your team on Huddle</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={googleLoading}
+            className="mt-8 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-6 py-3 font-medium text-gray-800 shadow-sm transition duration-200 hover:bg-gray-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {googleLoading ? (
+              <Spinner />
+            ) : (
+              <FontAwesomeIcon icon={faGoogle} className="h-5 w-5 text-plum/80" aria-hidden="true" />
+            )}
+            {googleLoading ? 'Redirecting...' : 'Continue with Google'}
+          </button>
+
+          <div className="my-6 flex items-center gap-3">
+            <span className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">or</span>
+            <span className="h-px flex-1 bg-gray-200" />
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div>
               <label htmlFor="fullName" className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-700">
                 Full Name
