@@ -255,7 +255,7 @@ export class MessagesGateway {
           body?.filePath,
           body?.fileName,
           body?.fileType,
-          body?.fileSize ? String(body.fileSize) : undefined,
+          body?.fileSize,
           {
             userId: client.data.userId,
             name: client.data.name,

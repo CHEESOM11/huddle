@@ -107,6 +107,7 @@ export class DmsGateway {
     body: {
       conversationId: string;
       content: string;
+      parentId?: string;
       filePath?: string;
       fileName?: string;
       fileType?: string;
@@ -151,6 +152,7 @@ export class DmsGateway {
         body.conversationId,
         body.content,
         client.data.accessToken,
+        body.parentId,
         body.filePath,
         body.fileName,
         body.fileType,
