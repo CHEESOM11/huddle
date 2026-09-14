@@ -110,7 +110,7 @@ export class DmsGateway {
       filePath?: string;
       fileName?: string;
       fileType?: string;
-      fileSize?: string;
+      fileSize?: number;
     },
     @ConnectedSocket() client: Socket,
   ) {
