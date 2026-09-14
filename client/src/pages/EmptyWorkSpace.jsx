@@ -15,6 +15,8 @@ import {
   fetchConversations,
   createConversation,
   fetchDirectMessages,
+  uploadDmFile,
+  getDmFileUrl,
 } from "../api/dms";
 import { fetchUsers } from "../api/users";
 import { searchMessages } from "../api/search";
@@ -139,14 +141,16 @@ function ReactionChip({ reaction, me, onClick }) {
   );
 }
 
-function FileAttachment({ channelId, message }) {
+function FileAttachment({ channelId, message, resolveUrl }) {
   const [imageUrl, setImageUrl] = useState(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isImage = (message.file_type ?? "").startsWith("image/");
+  const getUrl = resolveUrl ?? ((path) => getChannelFileUrl(channelId, path));
 
   useEffect(() => {
     if (!isImage) return;
     let cancelled = false;
-    getChannelFileUrl(channelId, message.file_path)
+    getUrl(message.file_path)
       .then((url) => {
         if (!cancelled) setImageUrl(url);
       })
@@ -154,11 +158,22 @@ function FileAttachment({ channelId, message }) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, message.file_path, isImage]);
+
+  // Close the lightbox with Escape for keyboard users.
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxOpen]);
 
   const open = async () => {
     try {
-      const url = await getChannelFileUrl(channelId, message.file_path);
+      const url = await getUrl(message.file_path);
       if (url) window.open(url, "_blank", "noopener,noreferrer");
     } catch {
       // Ignore; a stale/failed signed URL shouldn't crash the view.
@@ -167,11 +182,37 @@ function FileAttachment({ channelId, message }) {
 
   if (isImage && imageUrl) {
     return (
-      <img
-        src={imageUrl}
-        alt={message.file_name ?? "attachment"}
-        className="mt-2 max-h-64 max-w-full rounded-lg"
-      />
+      <>
+        <img
+          src={imageUrl}
+          alt={message.file_name ?? "attachment"}
+          onClick={() => setLightboxOpen(true)}
+          className="mt-2 max-h-64 max-w-full cursor-zoom-in rounded-lg"
+        />
+        {lightboxOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setLightboxOpen(false)}
+            role="dialog"
+            aria-label="Image preview"
+          >
+            <img
+              src={imageUrl}
+              alt={message.file_name ?? "attachment"}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-full max-w-full rounded-lg"
+            />
+            <button
+              type="button"
+              aria-label="Close preview"
+              onClick={() => setLightboxOpen(false)}
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            >
+              <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -375,6 +416,17 @@ const MessageRow = memo(function MessageRow({
               />
             ))}
           </div>
+        )}
+
+        {(message.reply_count ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={() => onOpenThread(message)}
+            className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-plum/60 transition hover:bg-black/5 hover:text-plum"
+          >
+            <FontAwesomeIcon icon={faReply} className="h-3 w-3" />
+            {message.reply_count} {message.reply_count === 1 ? "reply" : "replies"}
+          </button>
         )}
       </div>
 
@@ -749,7 +801,183 @@ function SettingsPanel({ channels, currentUserId, onClose, onDeleteChannel, onLo
   );
 }
 
-function DmMessageList({ messages, members }) {
+function DmMessageRow({
+  message,
+  conversationId,
+  senderName,
+  own,
+  currentUserId,
+  onToggleReaction,
+  onEditMessage,
+  onDeleteMessage,
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerUp, setPickerUp] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(message.content ?? "");
+  const reactions = message.reactions ?? [];
+
+  const submitEdit = () => {
+    const content = editValue.trim();
+    if (!content || content === (message.content ?? "").trim()) {
+      setEditing(false);
+      setEditValue(message.content ?? "");
+      return;
+    }
+    onEditMessage(message.id, content);
+    setEditing(false);
+  };
+
+  const openPicker = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPickerUp(rect.top > 108);
+    setPickerOpen((v) => !v);
+  };
+
+  return (
+    <div className="group relative flex items-start gap-3 px-4 py-2 transition hover:bg-white/60 sm:px-6">
+      <Avatar name={senderName} id={message.user_id} />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-semibold text-plum">{senderName}</span>
+          <span className="text-xs text-plum/40">{formatTime(message.created_at)}</span>
+        </div>
+
+        {editing ? (
+          <div className="mt-1 flex flex-col gap-1.5">
+            <textarea
+              rows={2}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitEdit();
+                }
+                if (e.key === "Escape") {
+                  setEditing(false);
+                  setEditValue(message.content ?? "");
+                }
+              }}
+              autoFocus
+              className="block w-full resize-none rounded-lg border border-plum/30 bg-white px-3 py-2 text-sm text-plum outline-none focus:border-plum focus:ring-2 focus:ring-plum/20"
+            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={submitEdit}
+                disabled={!editValue.trim()}
+                className="flex h-7 items-center gap-1 rounded-md bg-plum px-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              >
+                <FontAwesomeIcon icon={faCheck} className="h-3 w-3" />
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(false);
+                  setEditValue(message.content ?? "");
+                }}
+                className="rounded-md px-2 py-1 text-xs font-medium text-plum/60 transition hover:bg-black/5 hover:text-plum"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {message.content ? (
+              <p className="mt-0.5 break-words text-sm text-plum">{message.content}</p>
+            ) : null}
+            {message.file_path ? (
+              <FileAttachment
+                message={message}
+                channelId={conversationId}
+                resolveUrl={(path) => getDmFileUrl(conversationId, path)}
+              />
+            ) : null}
+          </>
+        )}
+
+        {reactions.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {reactions.map((reaction) => (
+              <ReactionChip
+                key={reaction.emoji}
+                reaction={reaction}
+                me={(reaction.users ?? []).includes(currentUserId)}
+                onClick={() => onToggleReaction(message.id, reaction.emoji)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5 self-start opacity-0 transition group-hover:opacity-100">
+        <button
+          type="button"
+          aria-label="Add reaction"
+          onClick={openPicker}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-plum/40 transition hover:bg-black/5 hover:text-plum"
+        >
+          <FontAwesomeIcon icon={faFaceSmile} className="h-4 w-4" />
+        </button>
+        {own && (
+          <>
+            <button
+              type="button"
+              aria-label="Edit message"
+              onClick={() => {
+                setEditValue(message.content ?? "");
+                setEditing(true);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-plum/40 transition hover:bg-black/5 hover:text-plum"
+            >
+              <FontAwesomeIcon icon={faPen} className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Delete message"
+              onClick={() => onDeleteMessage(message.id)}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-plum/40 transition hover:bg-red-50 hover:text-red-600"
+            >
+              <FontAwesomeIcon icon={faTrash} className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <div className={`absolute right-8 z-20 flex gap-1 rounded-full border border-black/10 bg-white p-1 shadow-lg ${pickerUp ? "top-0 -translate-y-12" : "top-7"}`}>
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                onToggleReaction(message.id, emoji);
+                setPickerOpen(false);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-base transition hover:bg-black/5"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DmMessageList({
+  messages,
+  members,
+  conversationId,
+  currentUserId,
+  onToggleReaction,
+  onEditMessage,
+  onDeleteMessage,
+}) {
   const containerRef = useRef(null);
 
   const nameMap = useMemo(() => {
@@ -779,26 +1007,25 @@ function DmMessageList({ messages, members }) {
         const senderName =
           message.sender_name ?? nameMap.get(message.user_id) ?? "Someone";
         return (
-          <div
+          <DmMessageRow
             key={message.id}
-            className="flex items-start gap-3 px-4 py-2 transition hover:bg-white/60 sm:px-6"
-          >
-            <Avatar name={senderName} id={message.user_id} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-sm font-semibold text-plum">{senderName}</span>
-                <span className="text-xs text-plum/40">{formatTime(message.created_at)}</span>
-              </div>
-              <p className="mt-0.5 break-words text-sm text-plum">{message.content}</p>
-            </div>
-          </div>
+            message={message}
+            conversationId={conversationId}
+            senderName={senderName}
+            own={message.user_id === currentUserId}
+            currentUserId={currentUserId}
+            onToggleReaction={onToggleReaction}
+            onEditMessage={onEditMessage}
+            onDeleteMessage={onDeleteMessage}
+          />
         );
       })}
     </div>
   );
 }
 
-function DmComposer({ placeholder, onSend }) {
+function DmComposer({ placeholder, onSend, onAttachFile }) {
+  const fileInputRef = useRef(null);
   const [draft, setDraft] = useState("");
 
   const handleSend = () => {
@@ -821,9 +1048,29 @@ function DmComposer({ placeholder, onSend }) {
     }
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file && onAttachFile) onAttachFile(file);
+    e.target.value = "";
+  };
+
   return (
     <section className="shrink-0 px-4 pb-5 sm:px-6" aria-label="Direct message composer">
       <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
+        <button
+          type="button"
+          aria-label="Add attachment"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-plum/50 transition hover:bg-black/5 hover:text-plum"
+        >
+          <FontAwesomeIcon icon={faPaperclip} className="h-4 w-4" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <input
           type="text"
           value={draft}
@@ -1206,6 +1453,8 @@ function Sidebar({
   onLogout,
   open,
   onClose,
+  unreadChannels,
+  unreadDms,
 }) {
   const [name, setName] = useState("");
   const [joinOpen, setJoinOpen] = useState(false);
@@ -1361,6 +1610,11 @@ function Sidebar({
                 }`}
               >
                 <span className="truncate"># {channel.name}</span>
+                {(unreadChannels?.[channel.id] ?? 0) > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-lime px-1.5 text-[11px] font-semibold text-plum">
+                    {unreadChannels[channel.id]}
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -1406,6 +1660,11 @@ function Sidebar({
                     {initialsFor(avatar?.name || name)}
                   </span>
                   <span className="truncate">{name}</span>
+                  {(unreadDms?.[conversation.id] ?? 0) > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-lime px-1.5 text-[11px] font-semibold text-plum">
+                      {unreadDms[conversation.id]}
+                    </span>
+                  )}
                 </button>
               </li>
             );
@@ -1472,6 +1731,8 @@ export default function EmptyWorkspace() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [threadMessage, setThreadMessage] = useState(null);
   const [threadReplies, setThreadReplies] = useState([]);
+  const [unreadChannels, setUnreadChannels] = useState({});
+  const [unreadDms, setUnreadDms] = useState({});
   const currentChannelRef = useRef(null);
   const currentConversationRef = useRef(null);
   const currentUserIdRef = useRef(null);
@@ -1480,29 +1741,101 @@ export default function EmptyWorkspace() {
   const typingTimerRef = useRef(null);
   const typingTimeoutsRef = useRef({});
   const toastTimerRef = useRef(null);
+  // Per-channel / per-conversation message caches so switching is instant
+  // (issue #5) — we restore the last-seen list immediately, then refresh it
+  // in the background.
+  const messageCacheRef = useRef(new Map());
+  const dmCacheRef = useRef(new Map());
+  // Live mirrors of the message lists, read inside the empty-deps socket
+  // effect and the channel-switch callbacks without stale closures.
+  const messagesRef = useRef([]);
+  const directMessagesRef = useRef([]);
+  const membersRef = useRef([]);
+  const channelsRef = useRef([]);
+  const conversationsRef = useRef([]);
+  // Temp-id reconciliation for optimistic sends (issue #5): the server both
+  // acks and broadcasts our own message, so we track the placeholder ids to
+  // collapse the two into one row.
+  const pendingChannelSendsRef = useRef(new Set());
+  const pendingDmSendsRef = useRef(new Set());
+  // Rooms we've already joined, so we can re-join on reconnect and stay
+  // subscribed to every channel/DM for unread badges (issue #4).
+  const joinedChannelsRef = useRef(new Set());
+  const joinedDmsRef = useRef(new Set());
+
+  // Keep ref mirrors in sync so empty-deps callbacks/effects read fresh values.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  useEffect(() => {
+    directMessagesRef.current = directMessages;
+  }, [directMessages]);
+  useEffect(() => {
+    membersRef.current = members;
+  }, [members]);
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  const joinAllRooms = useCallback(() => {
+    const socket = getSocket();
+    for (const channel of channelsRef.current) {
+      if (!joinedChannelsRef.current.has(channel.id)) {
+        joinedChannelsRef.current.add(channel.id);
+        socket.emit("join_channel", { channelId: channel.id });
+      }
+    }
+    for (const conversation of conversationsRef.current) {
+      if (!joinedDmsRef.current.has(conversation.id)) {
+        joinedDmsRef.current.add(conversation.id);
+        socket.emit("join_dm", { conversationId: conversation.id });
+      }
+    }
+  }, []);
+
+  // Subscribe to every channel/DM we belong to, so the client receives live
+  // messages for rooms it isn't currently viewing and can show unread badges
+  // (issue #4). Runs whenever the room lists change and after a reconnect.
+  useEffect(() => {
+    joinAllRooms();
+  }, [channels, conversations, joinAllRooms]);
 
   const handleSelectChannel = useCallback((channelId) => {
     if (!channelId || channelId === currentChannelRef.current) return;
 
-    const socket = getSocket();
-
-    // Leave any open DM conversation before switching to a channel.
-    const previousDm = currentConversationRef.current;
-    if (previousDm) {
-      socket.emit("leave_dm", { conversationId: previousDm });
-    }
-    currentConversationRef.current = null;
-    setSelectedConversationId(null);
-    setDirectMessages([]);
-
     const previous = currentChannelRef.current;
     if (previous) {
-      socket.emit("leave_channel", { channelId: previous });
+      // Stash the messages we were viewing so we can restore them instantly
+      // next time we switch back (issue #5).
+      messageCacheRef.current.set(previous, messagesRef.current);
     }
+
+    // Stash the open DM's messages too, in case we were viewing a DM.
+    const previousConversation = currentConversationRef.current;
+    if (previousConversation) {
+      dmCacheRef.current.set(previousConversation, directMessagesRef.current);
+    }
+
+    // Switching to a channel closes any open DM view.
+    currentConversationRef.current = null;
+    setSelectedConversationId(null);
 
     currentChannelRef.current = channelId;
     setSelectedChannelId(channelId);
-    setMessages([]);
+
+    // Clear this channel's unread badge now that it's the active view.
+    setUnreadChannels((prev) => {
+      if (!(channelId in prev)) return prev;
+      const next = { ...prev };
+      delete next[channelId];
+      return next;
+    });
+
+    // Restore from cache for an instant switch, else start empty.
+    setMessages(messageCacheRef.current.get(channelId) ?? []);
     setMembers([]);
     setMemberCount(0);
     setTypingUsers([]);
@@ -1511,73 +1844,74 @@ export default function EmptyWorkspace() {
     setThreadReplies([]);
     setSendError("");
 
+    // Refresh in the background so the list is always up to date.
     fetchMessages(channelId)
-      .then((list) =>
-        setMessages(
-          (list ?? []).map((message) => ({
-            ...message,
-            reactions: message.reactions ?? [],
-          }))
-        )
-      )
-      .catch(() => setMessages([]));
+      .then((list) => {
+        const normalized = (list ?? []).map((message) => ({
+          ...message,
+          reactions: message.reactions ?? [],
+        }));
+        messageCacheRef.current.set(channelId, normalized);
+        if (currentChannelRef.current === channelId) setMessages(normalized);
+      })
+      .catch(() => {});
 
     getChannelMembers(channelId)
       .then(({ members, memberCount }) => {
-        setMembers(members ?? []);
-        setMemberCount(memberCount ?? 0);
+        if (currentChannelRef.current === channelId) {
+          setMembers(members ?? []);
+          setMemberCount(memberCount ?? 0);
+        }
       })
-      .catch(() => {
-        setMembers([]);
-        setMemberCount(0);
-      });
-
-    socket.emit("join_channel", { channelId }, (ack) => {
-      if (ack?.event === "error") {
-        setSendError(ack.message || "Couldn't join channel.");
-      }
-    });
+      .catch(() => {});
   }, []);
 
   const handleSelectConversation = useCallback((conversationId) => {
     if (!conversationId || conversationId === currentConversationRef.current) return;
 
-    const socket = getSocket();
+    const previous = currentConversationRef.current;
+    if (previous) {
+      dmCacheRef.current.set(previous, directMessagesRef.current);
+    }
 
-    // Leave any open channel before switching to a DM.
+    // Stash the open channel's messages so we can restore them instantly when
+    // we come back (issue #5).
     const previousChannel = currentChannelRef.current;
     if (previousChannel) {
-      socket.emit("leave_channel", { channelId: previousChannel });
+      messageCacheRef.current.set(previousChannel, messagesRef.current);
     }
+
+    // Switching to a DM closes any open channel view.
     currentChannelRef.current = null;
     setSelectedChannelId(null);
-    setMessages([]);
     setMembers([]);
     setMemberCount(0);
     setTypingUsers([]);
 
-    const previousDm = currentConversationRef.current;
-    if (previousDm) {
-      socket.emit("leave_dm", { conversationId: previousDm });
-    }
-
     currentConversationRef.current = conversationId;
     setSelectedConversationId(conversationId);
-    setDirectMessages([]);
+
+    setUnreadDms((prev) => {
+      if (!(conversationId in prev)) return prev;
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+
+    setDirectMessages(dmCacheRef.current.get(conversationId) ?? []);
     setThreadMessage(null);
     threadParentIdRef.current = null;
     setThreadReplies([]);
     setSendError("");
 
     fetchDirectMessages(conversationId)
-      .then((list) => setDirectMessages(list ?? []))
-      .catch(() => setDirectMessages([]));
-
-    socket.emit("join_dm", { conversationId }, (ack) => {
-      if (ack?.event === "error") {
-        setSendError(ack.message || "Couldn't open conversation.");
-      }
-    });
+      .then((list) => {
+        dmCacheRef.current.set(conversationId, list ?? []);
+        if (currentConversationRef.current === conversationId) {
+          setDirectMessages(list ?? []);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const emitTyping = (typing) => {
@@ -1614,7 +1948,7 @@ export default function EmptyWorkspace() {
     if (!channelId || !messageId || !emoji) return;
     getSocket().emit("toggle_reaction", { channelId, messageId, emoji }, (ack) => {
       if (ack?.event === "error") {
-        setSendError(ack.message || "Couldn't react.");
+        setSendError(ack?.data?.message || ack?.message || "Couldn't react.");
       }
     });
   }, []);
@@ -1626,12 +1960,39 @@ export default function EmptyWorkspace() {
     setSendError("");
     stopTyping();
 
+    // Optimistic append (issue #5): show the message immediately with a
+    // placeholder id, then swap in the real row when the server acks.
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tempMessage = {
+      id: tempId,
+      channel_id: channelId,
+      user_id: currentUserId,
+      sender_name: currentUserName || null,
+      content,
+      created_at: new Date().toISOString(),
+      reactions: [],
+      pending: true,
+    };
+    pendingChannelSendsRef.current.add(tempId);
+    setMessages((prev) => [...prev, tempMessage]);
+
     return new Promise((resolve) => {
       getSocket().emit("send_message", { channelId, content }, (ack) => {
         if (ack?.event === "error") {
-          setSendError(ack.message || "Failed to send message.");
+          pendingChannelSendsRef.current.delete(tempId);
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          setSendError(ack?.data?.message || ack?.message || "Failed to send message.");
           resolve(false);
         } else {
+          pendingChannelSendsRef.current.delete(tempId);
+          const real = ack?.data ?? null;
+          if (real) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempId ? { ...real, reactions: real.reactions ?? [] } : m
+              )
+            );
+          }
           resolve(true);
         }
       });
@@ -1643,7 +2004,7 @@ export default function EmptyWorkspace() {
     if (!channelId || !messageId || !content.trim()) return;
     getSocket().emit("edit_message", { channelId, messageId, content }, (ack) => {
       if (ack?.event === "error") {
-        setSendError(ack.message || "Couldn't edit message.");
+        setSendError(ack?.data?.message || ack?.message || "Couldn't edit message.");
       }
     });
   }, []);
@@ -1653,7 +2014,7 @@ export default function EmptyWorkspace() {
     if (!channelId || !messageId) return;
     getSocket().emit("delete_message", { channelId, messageId }, (ack) => {
       if (ack?.event === "error") {
-        setSendError(ack.message || "Couldn't delete message.");
+        setSendError(ack?.data?.message || ack?.message || "Couldn't delete message.");
       }
     });
   }, []);
@@ -1677,7 +2038,7 @@ export default function EmptyWorkspace() {
         },
         (ack) => {
           if (ack?.event === "error") {
-            setSendError(ack.message || "Failed to send file.");
+            setSendError(ack?.data?.message || ack?.message || "Failed to send file.");
           }
         }
       );
@@ -1692,17 +2053,100 @@ export default function EmptyWorkspace() {
 
     setSendError("");
 
+    // Optimistic append for DMs too (issue #5).
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tempMessage = {
+      id: tempId,
+      conversation_id: conversationId,
+      user_id: currentUserId,
+      sender_name: currentUserName || null,
+      content,
+      created_at: new Date().toISOString(),
+      pending: true,
+    };
+    pendingDmSendsRef.current.add(tempId);
+    setDirectMessages((prev) => [...prev, tempMessage]);
+
     return new Promise((resolve) => {
       getSocket().emit("send_dm", { conversationId, content }, (ack) => {
         if (ack?.event === "error") {
-          setSendError(ack.message || "Failed to send message.");
+          pendingDmSendsRef.current.delete(tempId);
+          setDirectMessages((prev) => prev.filter((m) => m.id !== tempId));
+          setSendError(ack?.data?.message || ack?.message || "Failed to send message.");
           resolve(false);
         } else {
+          pendingDmSendsRef.current.delete(tempId);
+          const real = ack?.data ?? null;
+          if (real) {
+            setDirectMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempId ? { ...real, reactions: real.reactions ?? [] } : m
+              )
+            );
+          }
           resolve(true);
         }
       });
     });
   };
+
+  const handleSendDmFile = async (file) => {
+    const conversationId = currentConversationRef.current;
+    if (!conversationId || !file) return;
+
+    setSendError("");
+    try {
+      const uploaded = await uploadDmFile(conversationId, file);
+      getSocket().emit(
+        "send_dm",
+        {
+          conversationId,
+          content: "",
+          filePath: uploaded.file_path,
+          fileName: uploaded.file_name,
+          fileType: uploaded.file_type,
+          fileSize: uploaded.file_size,
+        },
+        (ack) => {
+          if (ack?.event === "error") {
+            setSendError(ack?.data?.message || ack?.message || "Failed to send file.");
+          }
+        }
+      );
+    } catch (err) {
+      setSendError(err.message || "Failed to send file.");
+    }
+  };
+
+  const handleDmToggleReaction = useCallback((messageId, emoji) => {
+    const conversationId = currentConversationRef.current;
+    if (!conversationId || !messageId || !emoji) return;
+    getSocket().emit("dm_toggle_reaction", { conversationId, messageId, emoji }, (ack) => {
+      if (ack?.event === "error") {
+        setSendError(ack?.data?.message || ack?.message || "Couldn't react.");
+      }
+    });
+  }, []);
+
+  const handleDmEditMessage = useCallback((messageId, content) => {
+    const conversationId = currentConversationRef.current;
+    if (!conversationId || !messageId || !content.trim()) return;
+    getSocket().emit("dm_edit_message", { conversationId, messageId, content }, (ack) => {
+      if (ack?.event === "error") {
+        setSendError(ack?.data?.message || ack?.message || "Couldn't edit message.");
+      }
+    });
+  }, []);
+
+  const handleDmDeleteMessage = useCallback((messageId) => {
+    const conversationId = currentConversationRef.current;
+    if (!conversationId || !messageId) return;
+    getSocket().emit("dm_delete_message", { conversationId, messageId }, (ack) => {
+      if (ack?.event === "error") {
+        setSendError(ack?.data?.message || ack?.message || "Couldn't delete message.");
+      }
+    });
+  }, []);
 
   const handleStartDm = async (userId) => {
     if (!userId) return { ok: false, message: "Select someone to message." };
@@ -1741,7 +2185,7 @@ export default function EmptyWorkspace() {
     if (!parentId || !content?.trim()) return;
     getSocket().emit("send_reply", { messageId: parentId, content }, (ack) => {
       if (ack?.event === "error") {
-        setSendError(ack.message || "Failed to send reply.");
+        setSendError(ack?.data?.message || ack?.message || "Failed to send reply.");
       }
     });
   };
@@ -1757,34 +2201,37 @@ export default function EmptyWorkspace() {
       if (name) setCurrentUserName(name);
 
       // Socket.IO clears room membership when a connection drops, so re-join
-      // the active channel/DM after every (re)connect. Without this, incoming
+      // every channel/DM after every (re)connect. Without this, incoming
       // messages stop arriving after a reconnect until the page is reloaded —
       // the "I have to refresh to see new messages" bug.
-      const channelId = currentChannelRef.current;
-      const conversationId = currentConversationRef.current;
-      if (channelId) {
-        socket.emit("join_channel", { channelId });
-      } else if (conversationId) {
-        socket.emit("join_dm", { conversationId });
-      }
+      joinedChannelsRef.current.clear();
+      joinedDmsRef.current.clear();
+      joinAllRooms();
 
       // On a reconnect (not the first auth), refetch the open channel/DM so
       // messages sent while we were briefly disconnected aren't missed.
       if (didAuthenticate) {
+        const channelId = currentChannelRef.current;
+        const conversationId = currentConversationRef.current;
         if (channelId) {
           fetchMessages(channelId)
-            .then((list) =>
-              setMessages(
-                (list ?? []).map((m) => ({
-                  ...m,
-                  reactions: m.reactions ?? [],
-                }))
-              )
-            )
+            .then((list) => {
+              const normalized = (list ?? []).map((m) => ({
+                ...m,
+                reactions: m.reactions ?? [],
+              }));
+              messageCacheRef.current.set(channelId, normalized);
+              if (currentChannelRef.current === channelId) setMessages(normalized);
+            })
             .catch(() => {});
         } else if (conversationId) {
           fetchDirectMessages(conversationId)
-            .then((list) => setDirectMessages(list ?? []))
+            .then((list) => {
+              dmCacheRef.current.set(conversationId, list ?? []);
+              if (currentConversationRef.current === conversationId) {
+                setDirectMessages(list ?? []);
+              }
+            })
             .catch(() => {});
         }
       }
@@ -1792,11 +2239,44 @@ export default function EmptyWorkspace() {
       didAuthenticate = true;
     };
     const handleNewMessage = (message) => {
-      if (message?.channel_id !== currentChannelRef.current) return;
-      const normalized = { ...message, reactions: message.reactions ?? [] };
-      setMessages((prev) =>
-        prev.some((m) => m.id === message.id) ? prev : [...prev, normalized]
-      );
+      const channelId = message?.channel_id;
+      if (!channelId) return;
+
+      if (channelId === currentChannelRef.current) {
+        const normalized = { ...message, reactions: message.reactions ?? [] };
+        setMessages((prev) => {
+          // Reconcile our own optimistic placeholder with the broadcast
+          // (issue #5) so we don't render the message twice.
+          if (
+            message.user_id === currentUserIdRef.current &&
+            pendingChannelSendsRef.current.size > 0
+          ) {
+            const tempId = pendingChannelSendsRef.current.values().next().value;
+            if (tempId) {
+              pendingChannelSendsRef.current.delete(tempId);
+              return prev.map((m) => (m.id === tempId ? normalized : m));
+            }
+          }
+          return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];
+        });
+      } else {
+        // Message for a channel we're not viewing: bump its unread badge and
+        // show a lightweight in-app notification (issue #4). Skip our own
+        // messages — we just sent them.
+        if (message.user_id === currentUserIdRef.current) return;
+        setUnreadChannels((prev) => ({
+          ...prev,
+          [channelId]: (prev[channelId] ?? 0) + 1,
+        }));
+        const channel = channelsRef.current.find((c) => c.id === channelId);
+        if (channel) {
+          const preview = (message.content ?? "").trim().slice(0, 60);
+          const who = message.sender_name ?? "Someone";
+          setToast(`${who} · #${channel.name}: ${preview || "shared a file"}`);
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+          toastTimerRef.current = setTimeout(() => setToast(""), 4000);
+        }
+      }
     };
     const handleAddedToChannel = () => {
       fetchChannels()
@@ -1823,6 +2303,15 @@ export default function EmptyWorkspace() {
     };
     const handleUserTyping = ({ userId, name }) => {
       if (!userId || userId === currentUserIdRef.current) return;
+      // We're subscribed to every room for unread badges, so filter typing to
+      // people in the channel we're actually viewing.
+      const activeMembers = membersRef.current;
+      if (
+        activeMembers.length > 0 &&
+        !activeMembers.some((m) => m.user_id === userId)
+      ) {
+        return;
+      }
       if (typingTimeoutsRef.current[userId]) {
         clearTimeout(typingTimeoutsRef.current[userId]);
       }
@@ -1861,6 +2350,25 @@ export default function EmptyWorkspace() {
       if (channelId !== currentChannelRef.current) return;
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
     };
+    const handleDmReactionUpdated = ({ messageId, reactions }) => {
+      setDirectMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, reactions: reactions ?? [] } : m
+        )
+      );
+    };
+    const handleDmMessageEdited = (message) => {
+      if (!message || message.conversation_id !== currentConversationRef.current) return;
+      setDirectMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.id ? { ...m, content: message.content } : m
+        )
+      );
+    };
+    const handleDmMessageDeleted = ({ messageId, conversationId }) => {
+      if (conversationId !== currentConversationRef.current) return;
+      setDirectMessages((prev) => prev.filter((m) => m.id !== messageId));
+    };
     const handleNewDm = (message) => {
       const conversationId = message?.conversation_id;
       if (!conversationId) return;
@@ -1874,14 +2382,45 @@ export default function EmptyWorkspace() {
       });
 
       if (conversationId === currentConversationRef.current) {
-        setDirectMessages((prev) =>
-          prev.some((m) => m.id === message.id) ? prev : [...prev, message]
-        );
+        const normalized = { ...message, reactions: message.reactions ?? [] };
+        setDirectMessages((prev) => {
+          // Reconcile our own optimistic placeholder with the broadcast.
+          if (
+            message.user_id === currentUserIdRef.current &&
+            pendingDmSendsRef.current.size > 0
+          ) {
+            const tempId = pendingDmSendsRef.current.values().next().value;
+            if (tempId) {
+              pendingDmSendsRef.current.delete(tempId);
+              return prev.map((m) => (m.id === tempId ? normalized : m));
+            }
+          }
+          return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];
+        });
+      } else {
+        // DM for a conversation we're not viewing: bump its unread badge.
+        // Skip our own messages — we just sent them.
+        if (message.user_id === currentUserIdRef.current) return;
+        setUnreadDms((prev) => ({
+          ...prev,
+          [conversationId]: (prev[conversationId] ?? 0) + 1,
+        }));
       }
     };
     const handleReplyCreated = (reply) => {
+      if (!reply) return;
+      // Increment the "N replies" indicator on the parent (issue #6).
+      if (reply.channel_id === currentChannelRef.current && reply.parent_id) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === reply.parent_id
+              ? { ...m, reply_count: (m.reply_count ?? 0) + 1 }
+              : m
+          )
+        );
+      }
       // Only append when the reply belongs to the thread that's currently open.
-      if (!reply || reply.parent_id !== threadParentIdRef.current) return;
+      if (reply.parent_id !== threadParentIdRef.current) return;
       setThreadReplies((prev) =>
         prev.some((r) => r.id === reply.id) ? prev : [...prev, reply]
       );
@@ -1906,6 +2445,9 @@ export default function EmptyWorkspace() {
     socket.on("reaction_updated", handleReactionUpdated);
     socket.on("message_edited", handleMessageEdited);
     socket.on("message_deleted", handleMessageDeleted);
+    socket.on("dm_reaction_updated", handleDmReactionUpdated);
+    socket.on("dm_message_edited", handleDmMessageEdited);
+    socket.on("dm_message_deleted", handleDmMessageDeleted);
     socket.on("error", handleError);
 
     return () => {
@@ -1920,9 +2462,12 @@ export default function EmptyWorkspace() {
       socket.off("reaction_updated", handleReactionUpdated);
       socket.off("message_edited", handleMessageEdited);
       socket.off("message_deleted", handleMessageDeleted);
+      socket.off("dm_reaction_updated", handleDmReactionUpdated);
+      socket.off("dm_message_edited", handleDmMessageEdited);
+      socket.off("dm_message_deleted", handleDmMessageDeleted);
       socket.off("error", handleError);
     };
-  }, []);
+  }, [joinAllRooms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2084,6 +2629,8 @@ export default function EmptyWorkspace() {
         onLogout={handleLogout}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        unreadChannels={unreadChannels}
+        unreadDms={unreadDms}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -2191,10 +2738,16 @@ export default function EmptyWorkspace() {
             <DmMessageList
               messages={directMessages}
               members={selectedConversation.members ?? []}
+              conversationId={selectedConversation.id}
+              currentUserId={currentUserId}
+              onToggleReaction={handleDmToggleReaction}
+              onEditMessage={handleDmEditMessage}
+              onDeleteMessage={handleDmDeleteMessage}
             />
             <DmComposer
               placeholder={`Message ${dmTitle(selectedConversation, currentUserId)}`}
               onSend={handleSendDm}
+              onAttachFile={handleSendDmFile}
             />
           </>
         ) : selectedChannel ? (
