@@ -8,6 +8,7 @@ import { StorageModule } from "./storage/storage.module";
 import { SearchModule } from "./search/search.module";
 import { DmsModule } from './dms/dms.module';
 import { UsersModule } from "./users/users.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsersModule } from "./users/users.module";
      SearchModule,
      DmsModule,
      UsersModule,
+     NotificationsModule,
     ],
   controllers: [],
   providers: [],

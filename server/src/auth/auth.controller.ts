@@ -46,7 +46,7 @@ export class AuthController {
     @Body('password') password: string,
     @Headers('authorization') authorization: string,
   ) {
-    const accessToken = authorization?.replace('Bearer ', '');
+    const accessToken = authorization?.replace(/^Bearer\s+/i, '');
 
     return this.authService.resetPassword(password, accessToken);
   }

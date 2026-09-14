@@ -11,8 +11,16 @@ import {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
+import { MessagesGateway } from "../messages/messages.gateway";
+import { NotificationsService } from "../notifications/notifications.service";
+
 @Injectable()
 export class InvitesService {
+  constructor(
+    private readonly messagesGateway: MessagesGateway,
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
   /**
    * Creates a Supabase client that acts on behalf
    * of the currently authenticated user.
@@ -204,6 +212,35 @@ export class InvitesService {
         "The channel associated with this invite no longer exists.",
       );
     }
+
+    const joinerName =
+      user.user_metadata?.name ??
+      user.user_metadata?.full_name ??
+      user.email ??
+      "Someone";
+
+    // Tell everyone already in the channel that a new member joined, and
+    // push to members who aren't online. Fire-and-forget so a push failure
+    // never rolls back the join.
+    this.messagesGateway.server
+      .to(`channel:${channelId}`)
+      .emit("member_joined", {
+        channelId,
+        user: { id: user.id, name: joinerName },
+      });
+
+    this.notificationsService
+      .sendToChannel(
+        accessToken,
+        channelId,
+        {
+          title: `${joinerName} joined`,
+          body: channel.name,
+          url: "/workspace",
+        },
+        user.id,
+      )
+      .catch(() => {});
 
     return {
       message: "Invite accepted successfully.",

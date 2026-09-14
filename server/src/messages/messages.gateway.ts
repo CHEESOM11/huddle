@@ -14,6 +14,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 
 import { MessagesService } from './messages.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @WebSocketGateway({
   cors: {
@@ -26,6 +27,7 @@ export class MessagesGateway {
 
   constructor(
     private readonly messagesService: MessagesService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -266,6 +268,24 @@ export class MessagesGateway {
           ...message,
           reactions: [],
         });
+
+      // Fire-and-forget web push to channel members who aren't online.
+      this.notificationsService
+        .sendToChannel(
+          accessToken,
+          channelId,
+          {
+            title: client.data.name ?? 'Someone',
+            body: content?.trim()
+              ? content.trim()
+              : body?.fileName
+                ? `Shared a file: ${body.fileName}`
+                : 'New message',
+            url: '/workspace',
+          },
+          userId,
+        )
+        .catch(() => {});
 
       return {
         event: 'message_sent',

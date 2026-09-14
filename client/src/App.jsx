@@ -15,6 +15,7 @@ import JoinInvitePage from './pages/JoinInvitePage';
 import { getCurrentSession } from './api/auth';
 import { acceptInvite } from './api/invites';
 import { getToken, clearToken, hasSeenOnboarding, getPendingInvite, clearPendingInvite } from './utils/storage';
+import { registerAndSubscribe } from './lib/notifications';
 import FullPageLoader from './components/FullPageLoader';
 
 function StartupGate() {
@@ -125,6 +126,10 @@ function RequireAuth({ children }) {
           }
           clearPendingInvite();
         }
+
+        // Ask to enable web push notifications (best-effort, never blocks).
+        registerAndSubscribe();
+
         setState('authenticated');
         return;
       }
