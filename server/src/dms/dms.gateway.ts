@@ -1,4 +1,7 @@
 import {
+  ForbiddenException,
+} from "@nestjs/common";
+import {
   ConnectedSocket,
   MessageBody,
   SubscribeMessage,
@@ -101,7 +104,14 @@ export class DmsGateway {
   @SubscribeMessage("send_dm")
   async sendDm(
     @MessageBody()
-    body: { conversationId: string; content: string },
+    body: {
+      conversationId: string;
+      content: string;
+      filePath?: string;
+      fileName?: string;
+      fileType?: string;
+      fileSize?: string;
+    },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -138,9 +148,13 @@ export class DmsGateway {
       }
 
       const message = await this.dmsService.sendMessage(
-        conversationId,
-        content,
-        accessToken,
+        body.conversationId,
+        body.content,
+        client.data.accessToken,
+        body.filePath,
+        body.fileName,
+        body.fileType,
+        body.fileSize,
       );
 
       const payload = {
@@ -165,6 +179,105 @@ export class DmsGateway {
         },
       };
     }
+  }
+
+  @SubscribeMessage("dm_toggle_reaction")
+  async toggleReaction(
+    @MessageBody()
+    body: {
+      conversationId: string;
+      messageId: string;
+      emoji: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = this.getRoomName(body.conversationId);
+
+    if (!client.rooms.has(room)) {
+      throw new ForbiddenException("You are not in this conversation.");
+    }
+
+    const reactions = await this.dmsService.toggleReaction(
+      body.messageId,
+      body.emoji,
+      client.data.accessToken,
+    );
+
+    this.server.to(room).emit("dm_reaction_updated", {
+      messageId: body.messageId,
+      reactions,
+    });
+
+    return {
+      event: "dm_reaction_updated",
+      data: {
+        messageId: body.messageId,
+        reactions,
+      },
+    };
+  }
+
+  @SubscribeMessage("dm_edit_message")
+  async editMessage(
+    @MessageBody()
+    body: {
+      conversationId: string;
+      messageId: string;
+      content: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = this.getRoomName(body.conversationId);
+
+    if (!client.rooms.has(room)) {
+      throw new ForbiddenException("You are not in this conversation.");
+    }
+
+    const message = await this.dmsService.editMessage(
+      body.messageId,
+      body.content,
+      client.data.accessToken,
+    );
+
+    this.server.to(room).emit("dm_message_edited", message);
+
+    return {
+      event: "dm_message_edited",
+      data: message,
+    };
+  }
+
+  @SubscribeMessage("dm_delete_message")
+  async deleteMessage(
+    @MessageBody()
+    body: {
+      conversationId: string;
+      messageId: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = this.getRoomName(body.conversationId);
+
+    if (!client.rooms.has(room)) {
+      throw new ForbiddenException("You are not in this conversation.");
+    }
+
+    await this.dmsService.deleteMessage(
+      body.messageId,
+      client.data.accessToken,
+    );
+
+    const payload = {
+      messageId: body.messageId,
+      conversationId: body.conversationId,
+    };
+
+    this.server.to(room).emit("dm_message_deleted", payload);
+
+    return {
+      event: "dm_message_deleted",
+      data: payload,
+    };
   }
 
   private getRoomName(conversationId: string) {
