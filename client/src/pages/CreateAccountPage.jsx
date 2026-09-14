@@ -160,7 +160,7 @@ function CreateAccountPage() {
         </div>
       </section>
 
-      <section className="flex flex-1 items-center justify-center bg-cream px-6 py-10 sm:px-10 lg:w-[53%] lg:py-12">
+      <section className="flex flex-1 items-center justify-center bg-cream px-6 py-10 sm:px-10 lg:max-h-screen lg:w-[53%] lg:overflow-y-auto lg:py-12">
         <div className="w-full max-w-md form-rise">
           <div>
             <h1 className="text-3xl font-bold tracking-normal text-black">Create your account</h1>
