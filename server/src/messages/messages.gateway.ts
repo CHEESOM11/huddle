@@ -199,6 +199,7 @@ export class MessagesGateway {
     body: {
       channelId: string;
       content: string;
+      parentId?: string;
       filePath?: string;
       fileName?: string;
       fileType?: string;
@@ -252,6 +253,7 @@ export class MessagesGateway {
           channelId,
           content,
           accessToken,
+          body?.parentId,
           body?.filePath,
           body?.fileName,
           body?.fileType,
