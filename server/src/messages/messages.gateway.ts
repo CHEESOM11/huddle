@@ -199,7 +199,6 @@ export class MessagesGateway {
     body: {
       channelId: string;
       content: string;
-      parentId?: string;
       filePath?: string;
       fileName?: string;
       fileType?: string;
@@ -253,11 +252,10 @@ export class MessagesGateway {
           channelId,
           content,
           accessToken,
-          body?.parentId,
           body?.filePath,
           body?.fileName,
           body?.fileType,
-          body?.fileSize,
+          body?.fileSize ? String(body.fileSize) : undefined,
           {
             userId: client.data.userId,
             name: client.data.name,
@@ -554,7 +552,6 @@ export class MessagesGateway {
       client.to(room).emit(
         'user_typing',
         {
-          channelId,
           userId:
             client.data.userId,
           name:
@@ -584,7 +581,6 @@ export class MessagesGateway {
       client.to(room).emit(
         'user_stopped_typing',
         {
-          channelId,
           userId:
             client.data.userId,
         },
