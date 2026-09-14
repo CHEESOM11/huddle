@@ -25,6 +25,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCommentDots,
   faPlus,
+  faBars,
   faHashtag,
   faUserPlus,
   faPaperPlane,
@@ -169,7 +170,7 @@ function FileAttachment({ channelId, message }) {
       <img
         src={imageUrl}
         alt={message.file_name ?? "attachment"}
-        className="mt-2 max-h-64 rounded-lg"
+        className="mt-2 max-h-64 max-w-full rounded-lg"
       />
     );
   }
@@ -263,7 +264,7 @@ const MessageRow = memo(function MessageRow({
   };
 
   return (
-    <div className="group relative flex items-start gap-3 px-6 py-2 transition hover:bg-white/60">
+    <div className="group relative flex items-start gap-3 px-4 py-2 transition hover:bg-white/60 sm:px-6">
       <span
         className="relative inline-flex shrink-0"
         onMouseEnter={scheduleProfileOpen}
@@ -494,7 +495,7 @@ function TypingIndicator({ users }) {
       : "Several people are typing";
 
   return (
-    <div className="flex h-6 shrink-0 items-center gap-2 px-6 text-xs text-plum/50">
+    <div className="flex h-6 shrink-0 items-center gap-2 px-4 text-xs text-plum/50 sm:px-6">
       <span>{label}</span>
       <span className="flex items-center gap-0.5 text-plum/40" aria-hidden="true">
         <span className="typing-dot" />
@@ -542,7 +543,7 @@ function MessageComposer({ channelName, onChange, onSend, onAttachFile }) {
   };
 
   return (
-    <section className="relative shrink-0 px-6 pb-5" aria-label="Message composer">
+    <section className="relative shrink-0 px-4 pb-5 sm:px-6" aria-label="Message composer">
       <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
         <button
           type="button"
@@ -690,7 +691,7 @@ function SettingsPanel({ channels, currentUserId, onClose, onDeleteChannel, onLo
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-plum/40" onClick={onClose} aria-hidden="true" />
-      <aside className="absolute inset-y-0 right-0 flex w-[320px] flex-col border-l border-black/10 bg-white shadow-xl">
+      <aside className="absolute inset-y-0 right-0 flex w-full flex-col border-l border-black/10 bg-white shadow-xl sm:w-[320px]">
         <header className="flex shrink-0 items-center justify-between border-b border-black/10 px-5 py-4">
           <h2 className="text-base font-semibold text-plum">Settings</h2>
           <button
@@ -780,7 +781,7 @@ function DmMessageList({ messages, members }) {
         return (
           <div
             key={message.id}
-            className="flex items-start gap-3 px-6 py-2 transition hover:bg-white/60"
+            className="flex items-start gap-3 px-4 py-2 transition hover:bg-white/60 sm:px-6"
           >
             <Avatar name={senderName} id={message.user_id} />
             <div className="min-w-0 flex-1">
@@ -821,7 +822,7 @@ function DmComposer({ placeholder, onSend }) {
   };
 
   return (
-    <section className="shrink-0 px-6 pb-5" aria-label="Direct message composer">
+    <section className="shrink-0 px-4 pb-5 sm:px-6" aria-label="Direct message composer">
       <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
         <input
           type="text"
@@ -870,7 +871,7 @@ function ThreadPanel({ message, replies, channelName, onClose, onSendReply }) {
   return (
     <div className="fixed inset-0 z-40">
       <div className="absolute inset-0 bg-plum/20" onClick={onClose} aria-hidden="true" />
-      <aside className="absolute inset-y-0 right-0 flex w-[380px] flex-col border-l border-black/10 bg-white shadow-xl">
+      <aside className="absolute inset-y-0 right-0 flex w-full flex-col border-l border-black/10 bg-white shadow-xl sm:w-[380px]">
         <header className="flex h-[60px] shrink-0 items-center justify-between border-b border-black/10 px-5">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-plum">Thread</h2>
@@ -1203,6 +1204,8 @@ function Sidebar({
   currentUserName,
   currentUserEmail,
   onLogout,
+  open,
+  onClose,
 }) {
   const [name, setName] = useState("");
   const [joinOpen, setJoinOpen] = useState(false);
@@ -1236,8 +1239,20 @@ function Sidebar({
   };
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col bg-plum">
-      <div className="flex items-center gap-2 px-4 py-4">
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-plum/40 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-plum transition-transform duration-200 md:static md:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center gap-2 px-4 py-4">
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-lime">
           <FontAwesomeIcon icon={faCommentDots} className="h-3.5 w-3.5 text-plum" />
         </div>
@@ -1424,8 +1439,9 @@ function Sidebar({
             <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
           </button>
         </div>
-      </div>
-    </aside>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -1453,6 +1469,7 @@ export default function EmptyWorkspace() {
   const [directMessages, setDirectMessages] = useState([]);
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [threadMessage, setThreadMessage] = useState(null);
   const [threadReplies, setThreadReplies] = useState([]);
   const currentChannelRef = useRef(null);
@@ -2043,24 +2060,44 @@ export default function EmptyWorkspace() {
       <Sidebar
         channels={channels}
         selectedChannelId={selectedChannelId}
-        onSelectChannel={handleSelectChannel}
+        onSelectChannel={(id) => {
+          setSidebarOpen(false);
+          handleSelectChannel(id);
+        }}
         isCreatingChannel={isCreatingChannel}
         onToggleCreate={handleToggleCreate}
         onCreateChannel={handleCreateChannel}
         onJoinChannel={handleJoinChannel}
         conversations={conversations}
         selectedConversationId={selectedConversationId}
-        onSelectConversation={handleSelectConversation}
-        onNewDm={() => setNewDmOpen(true)}
+        onSelectConversation={(id) => {
+          setSidebarOpen(false);
+          handleSelectConversation(id);
+        }}
+        onNewDm={() => {
+          setSidebarOpen(false);
+          setNewDmOpen(true);
+        }}
         currentUserId={currentUserId}
         currentUserName={currentUserName}
         currentUserEmail={currentUserEmail}
         onLogout={handleLogout}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[60px] shrink-0 items-center justify-between border-b border-black/10 bg-white px-6">
+        <header className="flex h-[60px] shrink-0 items-center justify-between gap-2 border-b border-black/10 bg-white px-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              aria-label="Open menu"
+              title="Menu"
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-plum/70 transition hover:bg-cream md:hidden"
+            >
+              <FontAwesomeIcon icon={faBars} className="h-5 w-5" />
+            </button>
             {selectedConversation ? (
               <>
                 <Avatar
@@ -2085,7 +2122,7 @@ export default function EmptyWorkspace() {
           <div className="flex shrink-0 items-center gap-3">
             {!selectedConversation && selectedChannel && (
               <div className="flex items-center gap-2">
-                <div className="flex -space-x-2">
+                <div className="hidden -space-x-2 sm:flex">
                   {members.slice(0, 4).map((member) => (
                     <Avatar key={member.user_id} name={member.name} id={member.user_id} size="sm" />
                   ))}
@@ -2111,10 +2148,10 @@ export default function EmptyWorkspace() {
               <button
                 type="button"
                 onClick={() => setInviting(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-plum transition hover:bg-cream"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-2.5 py-1.5 text-sm font-medium text-plum transition hover:bg-cream"
               >
                 <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
-                Invite
+                <span className="hidden sm:inline">Invite</span>
               </button>
             )}
 
@@ -2130,13 +2167,13 @@ export default function EmptyWorkspace() {
         </header>
 
         {toast && (
-          <div className="mx-6 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-plum/20 bg-plum/5 px-3 py-2 text-sm text-plum">
+          <div className="mx-3 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-plum/20 bg-plum/5 px-3 py-2 text-sm text-plum sm:mx-6">
             <span className="min-w-0 flex-1">{toast}</span>
           </div>
         )}
 
         {sendError && (
-          <div className="mx-6 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          <div className="mx-3 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 sm:mx-6">
             <span className="min-w-0 flex-1">{sendError}</span>
             <button
               type="button"
