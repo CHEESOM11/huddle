@@ -2559,7 +2559,7 @@ export default function EmptyWorkspace() {
           if (!cancelled && user) {
             currentUserIdRef.current = user.id;
             setCurrentUserId(user.id);
-            const name = user?.user_metadata?.name ?? user?.email ?? "";
+            const name = user?.user_metadata?.name ?? user?.user_metadata?.full_name ?? user?.email ?? "";
             if (name) setCurrentUserName(name);
             if (user?.email) setCurrentUserEmail(user.email);
           }
