@@ -203,6 +203,7 @@ export class MessagesGateway {
       fileName?: string;
       fileType?: string;
       fileSize?: number;
+      clientId?: string;
     },
     @ConnectedSocket()
     client: Socket,
@@ -262,37 +263,46 @@ export class MessagesGateway {
           },
         );
 
+      // `clientId` is the sender's optimistic placeholder id, echoed back so
+      // the client can swap its temp row for the real one (and only that row).
+      const payload = {
+        ...message,
+        reactions: [],
+        clientId: body?.clientId ?? null,
+      };
+
       this.server
         .to(room)
-        .emit('new_message', {
-          ...message,
-          reactions: [],
-        });
+        .emit('new_message', payload);
 
-      // Fire-and-forget web push to channel members who aren't online.
-      this.notificationsService
-        .sendToChannel(
-          accessToken,
-          channelId,
-          {
-            title: client.data.name ?? 'Someone',
-            body: content?.trim()
-              ? content.trim()
-              : body?.fileName
-                ? `Shared a file: ${body.fileName}`
-                : 'New message',
-            url: '/workspace',
-          },
-          userId,
+      // Fire-and-forget web push to channel members who aren't online. The
+      // channel-name lookup runs in the background so it never delays the ack.
+      const text = content?.trim()
+        ? content.trim()
+        : body?.fileName
+          ? `Shared a file: ${body.fileName}`
+          : 'New message';
+
+      this.messagesService
+        .getChannelName(channelId, accessToken)
+        .then((channelName) =>
+          this.notificationsService.sendToChannel(
+            accessToken,
+            channelId,
+            {
+              title: client.data.name ?? 'Someone',
+              body: channelName ? `#${channelName}: ${text}` : text,
+              url: `/workspace?channel=${channelId}`,
+              tag: `channel:${channelId}`,
+            },
+            userId,
+          ),
         )
         .catch(() => {});
 
       return {
         event: 'message_sent',
-        data: {
-          ...message,
-          reactions: [],
-        },
+        data: payload,
       };
     } catch (error) {
       return {

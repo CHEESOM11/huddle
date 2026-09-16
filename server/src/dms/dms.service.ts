@@ -9,6 +9,8 @@ import {
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+import { getProfileNames } from '../config/profiles';
+
 @Injectable()
 export class DmsService {
   private getAuthenticatedClient(
@@ -301,7 +303,68 @@ export class DmsService {
       );
     }
 
-    return messages ?? [];
+    const messageIds =
+      (messages ?? []).map((message) => message.id);
+
+    const reactionsMap =
+      await this.getReactions(messageIds, accessToken);
+
+    const senderNames = await getProfileNames(
+      client,
+      (messages ?? []).map((message) => message.user_id),
+    );
+
+    return (messages ?? []).map((message) => ({
+      ...message,
+      reactions: reactionsMap.get(message.id) ?? [],
+      sender_name:
+        senderNames.get(message.user_id) ?? null,
+    }));
+  }
+
+  private async getReactions(
+    messageIds: string[],
+    accessToken: string,
+  ) {
+    const map = new Map<
+      string,
+      { emoji: string; count: number; users: string[] }[]
+    >();
+
+    if (messageIds.length === 0) {
+      return map;
+    }
+
+    const client = this.getAuthenticatedClient(accessToken);
+
+    const { data, error } = await client
+      .from('direct_message_reactions')
+      .select('message_id, emoji, user_id')
+      .in('message_id', messageIds);
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    for (const row of data ?? []) {
+      const list = map.get(row.message_id) ?? [];
+
+      let entry = list.find(
+        (reaction) => reaction.emoji === row.emoji,
+      );
+
+      if (!entry) {
+        entry = { emoji: row.emoji, count: 0, users: [] };
+        list.push(entry);
+      }
+
+      entry.count += 1;
+      entry.users.push(row.user_id);
+
+      map.set(row.message_id, list);
+    }
+
+    return map;
   }
 
   async sendMessage(

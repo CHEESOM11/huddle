@@ -24,27 +24,18 @@ self.addEventListener('push', (event) => {
     body: payload.body || '',
     icon: '/favicon.svg',
     badge: '/favicon.svg',
+    // Group notifications per channel so a fresh message replaces the previous
+    // one for the same channel instead of stacking a new toast each time.
+    tag: payload.tag || undefined,
+    renotify: Boolean(payload.tag),
     data: { url: payload.url || '/workspace' },
   };
 
   event.waitUntil(
-    (async () => {
-      // Skip the OS notification when a Huddle tab is already focused — the
-      // user is looking at the app, so a system popup would be redundant.
-      const clients = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true,
-      });
-
-      if (clients.some((client) => client.focused)) {
-        return;
-      }
-
-      return self.registration.showNotification(
-        payload.title || 'Huddle',
-        options,
-      );
-    })(),
+    self.registration.showNotification(
+      payload.title || 'Huddle',
+      options,
+    ),
   );
 });
 

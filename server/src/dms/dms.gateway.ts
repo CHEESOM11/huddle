@@ -112,6 +112,7 @@ export class DmsGateway {
       fileName?: string;
       fileType?: string;
       fileSize?: number;
+      clientId?: string;
     },
     @ConnectedSocket() client: Socket,
   ) {
@@ -162,6 +163,8 @@ export class DmsGateway {
       const payload = {
         ...message,
         sender_name: client.data.name ?? null,
+        reactions: [],
+        clientId: body?.clientId ?? null,
       };
 
       this.server.to(room).emit("new_dm", payload);

@@ -10,6 +10,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import Onboarding from './pages/Onboarding';
 import ProfileSetupPage from './pages/ProfileSetupPage';
 import ConfirmEmailPage from './pages/ConfirmEmailPage';
+import GoogleCallbackPage from './pages/GoogleCallbackPage';
 import EmptyWorkspace from './pages/EmptyWorkSpace';
 import JoinInvitePage from './pages/JoinInvitePage';
 import { getCurrentSession } from './api/auth';
@@ -171,6 +172,7 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/confirm-email" element={<ConfirmEmailPage />} />
+        <Route path="/auth/callback" element={<GoogleCallbackPage />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile-setup" element={<ProfileSetupPage />} />
         <Route path="/join/:code" element={<JoinInvitePage />} />
