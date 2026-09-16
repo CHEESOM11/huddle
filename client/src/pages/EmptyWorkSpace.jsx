@@ -1977,7 +1977,7 @@ export default function EmptyWorkspace() {
     setMessages((prev) => [...prev, tempMessage]);
 
     return new Promise((resolve) => {
-      getSocket().emit("send_message", { channelId, content }, (ack) => {
+      getSocket().emit("send_message", { channelId, content, clientId: tempId }, (ack) => {
         if (ack?.event === "error") {
           pendingChannelSendsRef.current.delete(tempId);
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -2068,7 +2068,7 @@ export default function EmptyWorkspace() {
     setDirectMessages((prev) => [...prev, tempMessage]);
 
     return new Promise((resolve) => {
-      getSocket().emit("send_dm", { conversationId, content }, (ack) => {
+      getSocket().emit("send_dm", { conversationId, content, clientId: tempId }, (ack) => {
         if (ack?.event === "error") {
           pendingDmSendsRef.current.delete(tempId);
           setDirectMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -2246,15 +2246,17 @@ export default function EmptyWorkspace() {
         const normalized = { ...message, reactions: message.reactions ?? [] };
         setMessages((prev) => {
           // Reconcile our own optimistic placeholder with the broadcast
-          // (issue #5) so we don't render the message twice.
-          if (
-            message.user_id === currentUserIdRef.current &&
-            pendingChannelSendsRef.current.size > 0
-          ) {
-            const tempId = pendingChannelSendsRef.current.values().next().value;
-            if (tempId) {
-              pendingChannelSendsRef.current.delete(tempId);
-              return prev.map((m) => (m.id === tempId ? normalized : m));
+          // (issue #5) so we don't render the message twice. The gateway
+          // echoes `clientId` (our placeholder id) so we can swap the exact
+          // temp row, regardless of the order the broadcast and its ack land.
+          const clientId = message.clientId;
+          if (clientId) {
+            const idx = prev.findIndex((m) => m.pending && m.id === clientId);
+            if (idx !== -1) {
+              const next = prev.slice();
+              next[idx] = normalized;
+              pendingChannelSendsRef.current.delete(clientId);
+              return next;
             }
           }
           return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];
@@ -2384,15 +2386,16 @@ export default function EmptyWorkspace() {
       if (conversationId === currentConversationRef.current) {
         const normalized = { ...message, reactions: message.reactions ?? [] };
         setDirectMessages((prev) => {
-          // Reconcile our own optimistic placeholder with the broadcast.
-          if (
-            message.user_id === currentUserIdRef.current &&
-            pendingDmSendsRef.current.size > 0
-          ) {
-            const tempId = pendingDmSendsRef.current.values().next().value;
-            if (tempId) {
-              pendingDmSendsRef.current.delete(tempId);
-              return prev.map((m) => (m.id === tempId ? normalized : m));
+          // Reconcile our own optimistic placeholder with the broadcast (see
+          // handleNewMessage — `clientId` matches the exact temp row).
+          const clientId = message.clientId;
+          if (clientId) {
+            const idx = prev.findIndex((m) => m.pending && m.id === clientId);
+            if (idx !== -1) {
+              const next = prev.slice();
+              next[idx] = normalized;
+              pendingDmSendsRef.current.delete(clientId);
+              return next;
             }
           }
           return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];

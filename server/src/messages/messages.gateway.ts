@@ -203,6 +203,7 @@ export class MessagesGateway {
       fileName?: string;
       fileType?: string;
       fileSize?: number;
+      clientId?: string;
     },
     @ConnectedSocket()
     client: Socket,
@@ -262,12 +263,17 @@ export class MessagesGateway {
           },
         );
 
+      // `clientId` is the sender's optimistic placeholder id, echoed back so
+      // the client can swap its temp row for the real one (and only that row).
+      const payload = {
+        ...message,
+        reactions: [],
+        clientId: body?.clientId ?? null,
+      };
+
       this.server
         .to(room)
-        .emit('new_message', {
-          ...message,
-          reactions: [],
-        });
+        .emit('new_message', payload);
 
       // Fire-and-forget web push to channel members who aren't online.
       this.notificationsService
@@ -289,10 +295,7 @@ export class MessagesGateway {
 
       return {
         event: 'message_sent',
-        data: {
-          ...message,
-          reactions: [],
-        },
+        data: payload,
       };
     } catch (error) {
       return {
