@@ -304,13 +304,20 @@ export class MessagesService {
       ),
     );
 
-    return enriched.map((message) => ({
-      ...message,
-      sender_name:
-        senderNames.get(message.user_id) ?? null,
-      reply_count:
-        replyCounts.get(message.id) ?? 0,
-    }));
+    // Thread replies (parent_id != null) are fetched separately via
+    // `getReplies`, so keep them out of the main channel feed — replies should
+    // only appear inside the thread panel, Slack-style. `replyCounts` was built
+    // above from the full set (replies included), so the "N replies" indicator
+    // stays correct even though the replies themselves are filtered out here.
+    return enriched
+      .filter((message) => !message.parent_id)
+      .map((message) => ({
+        ...message,
+        sender_name:
+          senderNames.get(message.user_id) ?? null,
+        reply_count:
+          replyCounts.get(message.id) ?? 0,
+      }));
   }
 
   async editMessage(
