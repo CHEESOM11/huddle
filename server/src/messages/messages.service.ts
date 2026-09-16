@@ -129,6 +129,28 @@ export class MessagesService {
     return data;
   }
 
+  // Best-effort channel name lookup for the push-notification payload.
+  // Returns '' on failure so a missing name never breaks a message send.
+  async getChannelName(
+    channelId: string,
+    accessToken: string,
+  ): Promise<string> {
+    try {
+      const client =
+        this.getAuthenticatedClient(accessToken);
+
+      const { data } = await client
+        .from('channels')
+        .select('name')
+        .eq('id', channelId)
+        .maybeSingle();
+
+      return data?.name ?? '';
+    } catch {
+      return '';
+    }
+  }
+
   // Lightweight existence check: is `messageId` a message in `channelId`?
   // Used by the reaction gateway so it doesn't have to load every message
   // (and its reactions + sender names) just to validate a single id.

@@ -275,21 +275,28 @@ export class MessagesGateway {
         .to(room)
         .emit('new_message', payload);
 
-      // Fire-and-forget web push to channel members who aren't online.
-      this.notificationsService
-        .sendToChannel(
-          accessToken,
-          channelId,
-          {
-            title: client.data.name ?? 'Someone',
-            body: content?.trim()
-              ? content.trim()
-              : body?.fileName
-                ? `Shared a file: ${body.fileName}`
-                : 'New message',
-            url: '/workspace',
-          },
-          userId,
+      // Fire-and-forget web push to channel members who aren't online. The
+      // channel-name lookup runs in the background so it never delays the ack.
+      const text = content?.trim()
+        ? content.trim()
+        : body?.fileName
+          ? `Shared a file: ${body.fileName}`
+          : 'New message';
+
+      this.messagesService
+        .getChannelName(channelId, accessToken)
+        .then((channelName) =>
+          this.notificationsService.sendToChannel(
+            accessToken,
+            channelId,
+            {
+              title: client.data.name ?? 'Someone',
+              body: channelName ? `#${channelName}: ${text}` : text,
+              url: `/workspace?channel=${channelId}`,
+              tag: `channel:${channelId}`,
+            },
+            userId,
+          ),
         )
         .catch(() => {});
 

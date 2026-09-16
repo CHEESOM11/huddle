@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { clearToken } from "../utils/storage";
 import {
   fetchChannels,
@@ -43,6 +43,7 @@ import {
   faLink,
   faMagnifyingGlass,
   faReply,
+  faBell,
 } from "@fortawesome/free-solid-svg-icons";
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
@@ -1779,6 +1780,7 @@ function Sidebar({
 
 export default function EmptyWorkspace() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [channels, setChannels] = useState([]);
   const [selectedChannelId, setSelectedChannelId] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -2573,7 +2575,14 @@ export default function EmptyWorkspace() {
           if (cancelled) return;
           setChannels(data);
           setStatus("ready");
-          handleSelectChannel(data[0]?.id ?? null);
+          // Deep-link from a push notification: prefer the `?channel=<id>` in
+          // the URL when it names a channel we belong to, else the first one.
+          const requested = searchParams.get("channel");
+          const initial =
+            requested && data.some((c) => c.id === requested)
+              ? requested
+              : (data[0]?.id ?? null);
+          handleSelectChannel(initial);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -2597,7 +2606,7 @@ export default function EmptyWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, handleSelectChannel]);
+  }, [attempt, handleSelectChannel, searchParams]);
 
   const handleRetry = () => {
     setStatus("loading");
@@ -2613,6 +2622,18 @@ export default function EmptyWorkspace() {
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) ??
     null;
+
+  const totalUnread = useMemo(() => {
+    const channelTotal = Object.values(unreadChannels).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    const dmTotal = Object.values(unreadDms).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    return channelTotal + dmTotal;
+  }, [unreadChannels, unreadDms]);
 
   const handleLogout = () => {
     clearToken();
@@ -2764,6 +2785,19 @@ export default function EmptyWorkspace() {
                   {memberCount}
                 </span>
               </button>
+            )}
+
+            {totalUnread > 0 && (
+              <div
+                className="relative flex h-8 items-center justify-center rounded-lg px-1.5 text-plum/60"
+                title={`${totalUnread} unread`}
+                aria-label={`${totalUnread} unread messages`}
+              >
+                <FontAwesomeIcon icon={faBell} className="h-4 w-4" />
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-lime px-1 text-[10px] font-bold text-plum">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              </div>
             )}
 
             <button
