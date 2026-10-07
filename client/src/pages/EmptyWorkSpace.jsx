@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { clearToken } from "../utils/storage";
 import {
   fetchChannels,
@@ -43,6 +43,7 @@ import {
   faLink,
   faMagnifyingGlass,
   faReply,
+  faBell,
 } from "@fortawesome/free-solid-svg-icons";
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
@@ -250,6 +251,7 @@ const MessageRow = memo(function MessageRow({
   const [profileUp, setProfileUp] = useState(false);
   const profileEnterRef = useRef(null);
   const profileLeaveRef = useRef(null);
+  const avatarRef = useRef(null);
   const reactions = message.reactions ?? [];
   const sender = message.sender_name ?? "";
 
@@ -260,6 +262,19 @@ const MessageRow = memo(function MessageRow({
     },
     [],
   );
+
+  // On touch there is no mouse-leave, so dismiss the avatar profile popover
+  // when the user taps anywhere outside it (otherwise it stays stuck open).
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onDown = (e) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [profileOpen]);
 
   // Hovering the avatar shows a profile popover after a short delay (so
   // scrolling past messages doesn't flicker popovers); clicking opens it
@@ -307,6 +322,7 @@ const MessageRow = memo(function MessageRow({
   return (
     <div className="group relative flex items-start gap-3 px-4 py-2 transition hover:bg-white/60 sm:px-6">
       <span
+        ref={avatarRef}
         className="relative inline-flex shrink-0"
         onMouseEnter={scheduleProfileOpen}
         onMouseLeave={scheduleProfileClose}
@@ -430,7 +446,7 @@ const MessageRow = memo(function MessageRow({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 self-start opacity-0 transition group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 self-start opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
         <button
           type="button"
           aria-label="Reply in thread"
@@ -801,6 +817,64 @@ function SettingsPanel({ channels, currentUserId, onClose, onDeleteChannel, onLo
   );
 }
 
+function MembersPanel({ members, currentUserId, onClose }) {
+  const sorted = [...(members ?? [])].sort((a, b) => {
+    const rank = (r) => (r === "owner" ? 0 : r === "admin" ? 1 : 2);
+    const byRole = rank(a.role) - rank(b.role);
+    if (byRole !== 0) return byRole;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-plum/40" onClick={onClose} aria-hidden="true" />
+      <aside className="absolute inset-y-0 right-0 flex w-full flex-col border-l border-black/10 bg-white shadow-xl sm:w-[320px]">
+        <header className="flex shrink-0 items-center justify-between border-b border-black/10 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <FontAwesomeIcon icon={faUsers} className="h-4 w-4 text-plum/50" />
+            <h2 className="text-base font-semibold text-plum">Members</h2>
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs font-medium text-plum/60">
+              {sorted.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close members"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-plum/50 transition hover:bg-black/5 hover:text-plum"
+          >
+            <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          <ul className="space-y-0.5">
+            {sorted.map((member) => (
+              <li
+                key={member.user_id}
+                className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-cream"
+              >
+                <Avatar name={member.name} id={member.user_id} />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-plum">
+                  {member.name || "Unknown"}
+                  {member.user_id === currentUserId ? (
+                    <span className="ml-1.5 text-xs font-normal text-plum/40">(you)</span>
+                  ) : null}
+                </span>
+                {member.role && member.role !== "member" ? (
+                  <span className="shrink-0 rounded-md bg-lime/30 px-2 py-0.5 text-[11px] font-semibold capitalize text-plum">
+                    {member.role}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function DmMessageRow({
   message,
   conversationId,
@@ -914,7 +988,7 @@ function DmMessageRow({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 self-start opacity-0 transition group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 self-start opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
         <button
           type="button"
           aria-label="Add reaction"
@@ -1706,6 +1780,7 @@ function Sidebar({
 
 export default function EmptyWorkspace() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [channels, setChannels] = useState([]);
   const [selectedChannelId, setSelectedChannelId] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -1717,6 +1792,7 @@ export default function EmptyWorkspace() {
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [memberCount, setMemberCount] = useState(0);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentUserName, setCurrentUserName] = useState("");
   const [currentUserEmail, setCurrentUserEmail] = useState("");
@@ -1805,6 +1881,7 @@ export default function EmptyWorkspace() {
 
   const handleSelectChannel = useCallback((channelId) => {
     if (!channelId || channelId === currentChannelRef.current) return;
+    setMembersOpen(false);
 
     const previous = currentChannelRef.current;
     if (previous) {
@@ -1868,6 +1945,7 @@ export default function EmptyWorkspace() {
 
   const handleSelectConversation = useCallback((conversationId) => {
     if (!conversationId || conversationId === currentConversationRef.current) return;
+    setMembersOpen(false);
 
     const previous = currentConversationRef.current;
     if (previous) {
@@ -1977,7 +2055,7 @@ export default function EmptyWorkspace() {
     setMessages((prev) => [...prev, tempMessage]);
 
     return new Promise((resolve) => {
-      getSocket().emit("send_message", { channelId, content }, (ack) => {
+      getSocket().emit("send_message", { channelId, content, clientId: tempId }, (ack) => {
         if (ack?.event === "error") {
           pendingChannelSendsRef.current.delete(tempId);
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -2068,7 +2146,7 @@ export default function EmptyWorkspace() {
     setDirectMessages((prev) => [...prev, tempMessage]);
 
     return new Promise((resolve) => {
-      getSocket().emit("send_dm", { conversationId, content }, (ack) => {
+      getSocket().emit("send_dm", { conversationId, content, clientId: tempId }, (ack) => {
         if (ack?.event === "error") {
           pendingDmSendsRef.current.delete(tempId);
           setDirectMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -2246,15 +2324,17 @@ export default function EmptyWorkspace() {
         const normalized = { ...message, reactions: message.reactions ?? [] };
         setMessages((prev) => {
           // Reconcile our own optimistic placeholder with the broadcast
-          // (issue #5) so we don't render the message twice.
-          if (
-            message.user_id === currentUserIdRef.current &&
-            pendingChannelSendsRef.current.size > 0
-          ) {
-            const tempId = pendingChannelSendsRef.current.values().next().value;
-            if (tempId) {
-              pendingChannelSendsRef.current.delete(tempId);
-              return prev.map((m) => (m.id === tempId ? normalized : m));
+          // (issue #5) so we don't render the message twice. The gateway
+          // echoes `clientId` (our placeholder id) so we can swap the exact
+          // temp row, regardless of the order the broadcast and its ack land.
+          const clientId = message.clientId;
+          if (clientId) {
+            const idx = prev.findIndex((m) => m.pending && m.id === clientId);
+            if (idx !== -1) {
+              const next = prev.slice();
+              next[idx] = normalized;
+              pendingChannelSendsRef.current.delete(clientId);
+              return next;
             }
           }
           return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];
@@ -2384,15 +2464,16 @@ export default function EmptyWorkspace() {
       if (conversationId === currentConversationRef.current) {
         const normalized = { ...message, reactions: message.reactions ?? [] };
         setDirectMessages((prev) => {
-          // Reconcile our own optimistic placeholder with the broadcast.
-          if (
-            message.user_id === currentUserIdRef.current &&
-            pendingDmSendsRef.current.size > 0
-          ) {
-            const tempId = pendingDmSendsRef.current.values().next().value;
-            if (tempId) {
-              pendingDmSendsRef.current.delete(tempId);
-              return prev.map((m) => (m.id === tempId ? normalized : m));
+          // Reconcile our own optimistic placeholder with the broadcast (see
+          // handleNewMessage — `clientId` matches the exact temp row).
+          const clientId = message.clientId;
+          if (clientId) {
+            const idx = prev.findIndex((m) => m.pending && m.id === clientId);
+            if (idx !== -1) {
+              const next = prev.slice();
+              next[idx] = normalized;
+              pendingDmSendsRef.current.delete(clientId);
+              return next;
             }
           }
           return prev.some((m) => m.id === message.id) ? prev : [...prev, normalized];
@@ -2480,7 +2561,7 @@ export default function EmptyWorkspace() {
           if (!cancelled && user) {
             currentUserIdRef.current = user.id;
             setCurrentUserId(user.id);
-            const name = user?.user_metadata?.name ?? user?.email ?? "";
+            const name = user?.user_metadata?.name ?? user?.user_metadata?.full_name ?? user?.email ?? "";
             if (name) setCurrentUserName(name);
             if (user?.email) setCurrentUserEmail(user.email);
           }
@@ -2494,7 +2575,14 @@ export default function EmptyWorkspace() {
           if (cancelled) return;
           setChannels(data);
           setStatus("ready");
-          handleSelectChannel(data[0]?.id ?? null);
+          // Deep-link from a push notification: prefer the `?channel=<id>` in
+          // the URL when it names a channel we belong to, else the first one.
+          const requested = searchParams.get("channel");
+          const initial =
+            requested && data.some((c) => c.id === requested)
+              ? requested
+              : (data[0]?.id ?? null);
+          handleSelectChannel(initial);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -2518,7 +2606,7 @@ export default function EmptyWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, handleSelectChannel]);
+  }, [attempt, handleSelectChannel, searchParams]);
 
   const handleRetry = () => {
     setStatus("loading");
@@ -2534,6 +2622,18 @@ export default function EmptyWorkspace() {
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedConversationId) ??
     null;
+
+  const totalUnread = useMemo(() => {
+    const channelTotal = Object.values(unreadChannels).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    const dmTotal = Object.values(unreadDms).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    return channelTotal + dmTotal;
+  }, [unreadChannels, unreadDms]);
 
   const handleLogout = () => {
     clearToken();
@@ -2579,7 +2679,7 @@ export default function EmptyWorkspace() {
 
   if (status === "loading") {
     return (
-      <div className="flex h-screen items-center justify-center bg-cream">
+      <div className="flex h-dvh items-center justify-center bg-cream">
         <Spinner className="h-8 w-8 text-plum" />
       </div>
     );
@@ -2587,7 +2687,7 @@ export default function EmptyWorkspace() {
 
   if (status === "error") {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-cream px-6 text-center">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-cream px-6 text-center">
         <p className="text-plum/70">{errorMessage}</p>
         <button
           type="button"
@@ -2601,7 +2701,7 @@ export default function EmptyWorkspace() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-cream font-sans text-plum">
+    <div className="flex h-dvh w-full overflow-hidden bg-cream font-sans text-plum">
       <Sidebar
         channels={channels}
         selectedChannelId={selectedChannelId}
@@ -2668,7 +2768,13 @@ export default function EmptyWorkspace() {
 
           <div className="flex shrink-0 items-center gap-3">
             {!selectedConversation && selectedChannel && (
-              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMembersOpen((v) => !v)}
+                aria-label={`${memberCount} members`}
+                title="Members"
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-cream"
+              >
                 <div className="hidden -space-x-2 sm:flex">
                   {members.slice(0, 4).map((member) => (
                     <Avatar key={member.user_id} name={member.name} id={member.user_id} size="sm" />
@@ -2677,6 +2783,19 @@ export default function EmptyWorkspace() {
                 <span className="inline-flex items-center gap-1 text-xs text-plum/60">
                   <FontAwesomeIcon icon={faUsers} className="h-3.5 w-3.5" />
                   {memberCount}
+                </span>
+              </button>
+            )}
+
+            {totalUnread > 0 && (
+              <div
+                className="relative flex h-8 items-center justify-center rounded-lg px-1.5 text-plum/60"
+                title={`${totalUnread} unread`}
+                aria-label={`${totalUnread} unread messages`}
+              >
+                <FontAwesomeIcon icon={faBell} className="h-4 w-4" />
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-lime px-1 text-[10px] font-bold text-plum">
+                  {totalUnread > 99 ? "99+" : totalUnread}
                 </span>
               </div>
             )}
@@ -2796,6 +2915,14 @@ export default function EmptyWorkspace() {
           channelName={selectedChannel?.name}
           onClose={handleCloseThread}
           onSendReply={handleSendReply}
+        />
+      )}
+
+      {membersOpen && selectedChannel && (
+        <MembersPanel
+          members={members}
+          currentUserId={currentUserId}
+          onClose={() => setMembersOpen(false)}
         />
       )}
 

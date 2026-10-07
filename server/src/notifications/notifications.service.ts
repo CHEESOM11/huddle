@@ -139,7 +139,12 @@ export class NotificationsService {
   async sendToChannel(
     accessToken: string,
     channelId: string,
-    payload: { title: string; body: string; url: string },
+    payload: {
+      title: string;
+      body: string;
+      url: string;
+      tag?: string;
+    },
     excludeUserId: string,
   ): Promise<void> {
     if (

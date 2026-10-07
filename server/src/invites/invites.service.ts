@@ -236,7 +236,8 @@ export class InvitesService {
         {
           title: `${joinerName} joined`,
           body: channel.name,
-          url: "/workspace",
+          url: `/workspace?channel=${channelId}`,
+          tag: `channel:${channelId}`,
         },
         user.id,
       )

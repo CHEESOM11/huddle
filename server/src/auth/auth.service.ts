@@ -152,32 +152,37 @@ export class AuthService {
       );
     }
 
-    const { createClient } = await import('@supabase/supabase-js');
-
-    const userSupabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_PUBLISHABLE_KEY!,
+    // supabase-js's `updateUser` needs a full stored session (access *and*
+    // refresh token), but the reset flow only hands us the recovery access
+    // token. Call the GoTrue `/user` endpoint directly with that token instead
+    // — it's the same request `updateUser` makes under the hood, and it accepts
+    // a recovery access token on its own.
+    const res = await fetch(
+      `${process.env.SUPABASE_URL}/auth/v1/user`,
       {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: process.env.SUPABASE_PUBLISHABLE_KEY!,
+          Authorization: `Bearer ${accessToken}`,
         },
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
+        body: JSON.stringify({ password }),
       },
     );
 
-    const { data, error } = await userSupabase.auth.updateUser({
-      password,
-    });
-
-    if (error) {
-      throw new BadRequestException(error.message);
+    if (!res.ok) {
+      let message = 'Unable to update password.';
+      try {
+        const body = await res.json();
+        if (body?.msg) message = body.msg;
+        else if (body?.message) message = body.message;
+      } catch {
+        // Non-JSON error body — fall back to the generic message.
+      }
+      throw new BadRequestException(message);
     }
+
+    const data = await res.json();
 
     return {
       message: 'Password updated successfully.',
